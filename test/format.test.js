@@ -64,10 +64,22 @@ test('formatSteps groups thousands', () => {
   assert.strictEqual(f.formatSteps(1234567), '1,234,567')
 })
 
+test('formatSteps renders a dash when the sensor has not reported, but keeps a real zero', () => {
+  assert.strictEqual(f.formatSteps(0), '0')
+  assert.strictEqual(f.formatSteps(null), '--')
+  assert.strictEqual(f.formatSteps(undefined), '--')
+})
+
 test('formatBattery clamps and suffixes', () => {
   assert.strictEqual(f.formatBattery(80), '80%')
   assert.strictEqual(f.formatBattery(-5), '0%')
   assert.strictEqual(f.formatBattery(140), '100%')
+})
+
+test('formatBattery renders a dash when the sensor has not reported, but keeps a real zero', () => {
+  assert.strictEqual(f.formatBattery(0), '0%')
+  assert.strictEqual(f.formatBattery(null), '--%')
+  assert.strictEqual(f.formatBattery(undefined), '--%')
 })
 
 test('formatTemp appends a degree sign', () => {
@@ -99,19 +111,19 @@ test('formatCalories rounds to whole numbers', () => {
   assert.strictEqual(f.formatCalories(0), '0')
 })
 
+test('formatCalories renders a dash when the sensor has not reported, but keeps a real zero', () => {
+  assert.strictEqual(f.formatCalories(0), '0')
+  assert.strictEqual(f.formatCalories(null), '--')
+  assert.strictEqual(f.formatCalories(undefined), '--')
+})
+
 test('formatDistance keeps one decimal', () => {
   assert.strictEqual(f.formatDistance(2.5), '2.5 km')
   assert.strictEqual(f.formatDistance(10), '10.0 km')
 })
 
-test('formatDuration renders minutes and hours', () => {
-  assert.strictEqual(f.formatDuration(24), '24 min')
-  assert.strictEqual(f.formatDuration(90), '1h 30min')
-  assert.strictEqual(f.formatDuration(60), '1h 00min')
-})
-
 test('unavailable numeric values degrade rather than print NaN', () => {
-  assert.strictEqual(f.formatSteps(null), '0')
-  assert.strictEqual(f.formatCalories(null), '0')
+  assert.strictEqual(f.formatSteps(null), '--')
+  assert.strictEqual(f.formatCalories(null), '--')
   assert.strictEqual(f.formatTemp(null), '--°')
 })

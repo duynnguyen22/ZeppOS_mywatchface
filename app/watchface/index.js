@@ -133,6 +133,15 @@ WatchFace({
     const weatherSensor = hmSensor.createSensor(hmSensor.id.WEATHER)
     const distanceSensor = hmSensor.createSensor(hmSensor.id.DISTANCE)
 
+    // Weather icon: a simple sun disc, drawn the same way as the stat-card
+    // accent icons and the pill icon (a FILL_RECT with radius = half the
+    // side, which renders as a circle). No sun-behind-cloud composite.
+    hmUI.createWidget(hmUI.widget.FILL_RECT, {
+      x: RECT.WEATHER_ICON.x, y: RECT.WEATHER_ICON.y,
+      w: RECT.WEATHER_ICON.w, h: RECT.WEATHER_ICON.h,
+      radius: RECT.WEATHER_ICON.w / 2, color: COLOR.AMBER, show_level: normal,
+    })
+
     const tempText = hmUI.createWidget(hmUI.widget.TEXT, {
       x: RECT.TEMP.x, y: RECT.TEMP.y, w: RECT.TEMP.w, h: RECT.TEMP.h,
       color: COLOR.WHITE, text_size: TYPE.TEMP,

@@ -9,10 +9,19 @@ stat cards (steps, heart rate, calories), and an activity summary pill.
 |---|---|
 | Target device | Amazfit Active 2 — **Round** |
 | Screen | 466 × 466, circular |
-| Platform | Zepp OS 5.0 |
-| API level | 4.2 |
+| Device platform | Zepp OS 5.0 |
+| Device API level | 4.2 |
+| **Project API target** | **2.0.0**, per `apiVersion` in `app/app.json` |
 | App type | `watchface` |
 | App name | Horizon |
+
+The "Device platform"/"Device API level" rows above describe the hardware
+this face runs on. They are **not** the API surface this project is
+written against: `app/app.json` deliberately declares
+`runtime.apiVersion.{compatible,target,minVersion}` as `"2.0.0"`, and the
+code only uses the 2.0.0 API surface, even though it runs fine on the
+newer OS 5.0 / API 4.2 hardware. Don't write API-4.2-only calls expecting
+them to work here.
 
 ## Round vs. Square — read this before you touch `app.json`
 
@@ -61,7 +70,7 @@ tools/                   asset-generating build scripts — NOT inside app/
   png.js                   shared zlib-only PNG encoder
 
 reference.png            the design mockup this face implements
-docs/, .superpowers/     spec and planning artifacts from the build process
+docs/                    spec and planning artifacts from the build process
 ```
 
 ### Why `test/` and `tools/` are NOT inside `app/`
@@ -137,15 +146,21 @@ global, so `test/*.test.js` exercises them directly with `node --test`.
 
 `app/watchface/index.js` is the **only** file that touches the Zepp
 platform: it creates widgets with `hmUI.createWidget`, reads sensors, and
-wires the `resume_call`/`pause_call` timer lifecycle. It imports its
-numbers from `tokens.js` and `layout.js` rather than hardcoding them.
+wires the `resume_call`/`pause_call` timer lifecycle. Colours and text
+sizes come from `tokens.js`, and the base element rectangles come from
+`layout.js`'s `RECT`/`statCard()` — but not everything is sourced that
+way: some interior offsets (e.g. the pill's icon and text positions) and
+most `radius` values are hardcoded inline in `index.js`.
 
 `fitsOnFace()` (in `layout.js`) is the key correctness check: it takes an
 element's rectangle and validates every corner against the circular
 bezel (screen center + radius), which is the thing that catches
 round-screen clipping — a rectangle that would look fine on a square
 screen but has its corner cut off by the bezel on this round one. Every
-rect in the layout table is checked against it in the test suite.
+entry in the base `RECT` table is checked against it in the test suite
+(`test/layout.test.js`), at test time — not build time. Positions derived
+by arithmetic in `index.js` (card insets, chart bar positions, the pill
+interior offsets, the hour/minute split) are not covered by this check.
 
 ## Not implemented from the reference
 

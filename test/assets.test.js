@@ -31,3 +31,24 @@ test('the icon file is a valid PNG', () => {
   const bytes = fs.readFileSync(iconAbsPath)
   assert.ok(bytes.subarray(0, 8).equals(PNG_SIGNATURE))
 })
+
+// index.js references the background as 'images/bg.png', resolved from
+// assets/<target>/. Nothing else guards this file: delete or truncate it
+// and the build still succeeds while the face renders black.
+const bgAbsPath = path.join(
+  __dirname, '..', 'app', 'assets', targetName, 'images', 'bg.png'
+)
+
+test('the background file exists and is non-empty', () => {
+  assert.ok(
+    fs.existsSync(bgAbsPath),
+    `expected background at ${bgAbsPath}; run "npm run background" to generate it`
+  )
+  const { size } = fs.statSync(bgAbsPath)
+  assert.ok(size > 0, `${bgAbsPath} exists but is empty`)
+})
+
+test('the background file is a valid PNG', () => {
+  const bytes = fs.readFileSync(bgAbsPath)
+  assert.ok(bytes.subarray(0, 8).equals(PNG_SIGNATURE))
+})

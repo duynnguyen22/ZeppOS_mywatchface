@@ -29,11 +29,13 @@ function formatDate(week, month, day) {
 }
 
 function formatSteps(steps) {
+  if (steps === null || steps === undefined) return '--'
   const value = Number(steps) || 0
   return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
 function formatBattery(percent) {
+  if (percent === null || percent === undefined) return '--%'
   return `${Math.max(0, Math.min(100, Number(percent) || 0))}%`
 }
 
@@ -53,6 +55,7 @@ function formatHeart(bpm) {
 }
 
 function formatCalories(kcal) {
+  if (kcal === null || kcal === undefined) return '--'
   return String(Math.round(Number(kcal) || 0))
 }
 
@@ -60,14 +63,8 @@ function formatDistance(km) {
   return `${(Number(km) || 0).toFixed(1)} km`
 }
 
-function formatDuration(minutes) {
-  const total = Number(minutes) || 0
-  if (total < 60) return `${total} min`
-  return `${Math.floor(total / 60)}h ${pad2(total % 60)}min`
-}
-
 module.exports = {
   pad2, formatHour, formatMinute, meridiem, formatDate,
   formatSteps, formatBattery, formatTemp, formatHiLo,
-  formatHeart, formatCalories, formatDistance, formatDuration,
+  formatHeart, formatCalories, formatDistance,
 }

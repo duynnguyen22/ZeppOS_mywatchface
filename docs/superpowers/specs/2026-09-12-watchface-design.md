@@ -70,8 +70,12 @@ future change could drive them from real data only if the API gains it.
 ## Layout
 
 Coordinates are for a 466 × 466 design space, derived by proportional
-measurement from the reference. Every element is validated at build time by
-`fitsOnFace()` against the circular bezel.
+measurement from the reference. The base rectangles in the table below are
+checked by a unit test (`test/layout.test.js`), which calls `fitsOnFace()`
+against the circular bezel for every entry in `RECT` — this happens at test
+time, not build time. Positions derived by arithmetic elsewhere in
+`index.js` (card insets, chart bar positions, the pill interior offsets,
+the hour/minute split) are not covered by this check.
 
 | Element | x | y | w | h |
 |---|---|---|---|---|
