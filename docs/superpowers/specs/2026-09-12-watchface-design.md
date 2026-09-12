@@ -76,7 +76,7 @@ measurement from the reference. Every element is validated at build time by
 | Element | x | y | w | h |
 |---|---|---|---|---|
 | Background image | 0 | 0 | 466 | 466 |
-| Date (`TUE, SEP 12`) | 83 | 58 | 300 | 28 |
+| Date (`TUE, SEP 12`) | 88 | 58 | 290 | 28 |
 | Weather icon | 70 | 76 | 30 | 30 |
 | Temperature (`28°`) | 106 | 76 | 80 | 30 |
 | Hi/lo (`H:32° L:24°`) | 70 | 104 | 140 | 22 |

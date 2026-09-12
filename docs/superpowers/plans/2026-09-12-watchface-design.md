@@ -168,14 +168,14 @@ App({
 })
 ```
 
-- [ ] **Step 6: Create .gitignore**
+- [ ] **Step 6: Leave .gitignore alone**
 
-```
-node_modules/
-dist/
-.DS_Store
-*.log
-```
+`.gitignore` already exists and already covers everything this task needs,
+plus `.superpowers/`. Do NOT recreate or overwrite it — doing so un-ignores
+the SDD workspace and commits scratch artifacts.
+
+Run: `cat .gitignore`
+Expected: contains `node_modules/`, `dist/`, `.DS_Store`, `*.log`, and `.superpowers/`.
 
 - [ ] **Step 7: Run the tests to verify they pass**
 
@@ -185,7 +185,7 @@ Expected: all seven tests PASS.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add package.json app.json app.js .gitignore test/app-json.test.js
+git add package.json app.json app.js test/app-json.test.js
 git commit -m "feat: scaffold watchface project targeting Active 2 Round"
 ```
 
@@ -463,7 +463,9 @@ function statCard(index) {
 
 const RECT = {
   BACKGROUND: { x: 0, y: 0, w: 466, h: 466 },
-  DATE: { x: 83, y: 58, w: 300, h: 28 },
+  // x/w verified by computation: {x:83,w:300} fails fitsOnFace(rect, 4)
+  // at 230.5 against a 229 limit. Do not widen without re-checking.
+  DATE: { x: 88, y: 58, w: 290, h: 28 },
   WEATHER_ICON: { x: 70, y: 76, w: 30, h: 30 },
   TEMP: { x: 106, y: 76, w: 80, h: 30 },
   HILO: { x: 70, y: 104, w: 140, h: 22 },
@@ -802,14 +804,15 @@ test('pixel data round-trips through the encoder', () => {
 })
 
 test('CRC is valid for every chunk', () => {
+  // Checked against Node's own zlib.crc32, not the encoder's copy, so this
+  // is an independent verification. Node 22 provides it.
+  assert.strictEqual(typeof zlib.crc32, 'function', 'needs Node >= 20.15')
   const png = encodePNG(4, 4, Buffer.alloc(4 * 4 * 4, 200))
   let offset = 8
   while (offset < png.length) {
     const length = png.readUInt32BE(offset)
     const stored = png.readUInt32BE(offset + 8 + length)
-    const computed = zlib.crc32
-      ? zlib.crc32(png.subarray(offset + 4, offset + 8 + length))
-      : stored
+    const computed = zlib.crc32(png.subarray(offset + 4, offset + 8 + length))
     assert.strictEqual(computed >>> 0, stored >>> 0)
     offset += 12 + length
   }
@@ -1017,11 +1020,31 @@ Expected: prints the written path.
 Run: `sips -g pixelWidth -g pixelHeight assets/active-2-round/images/bg.png`
 Expected: `pixelWidth: 466` and `pixelHeight: 466`.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 8: Generate the app icon**
+
+`app.json` declares `"icon": "icon.png"`, and `zeus build` runs in Tasks 6
+and 7 — so the icon must exist now, not later.
+
+Create `tools/make-icon.js`: a 192 × 192 PNG written with `encodePNG`,
+filled with `COLOR.BG_DEEP` (`0x050b0d`), with a filled circle of radius 58
+centred at `(96, 96)` in `COLOR.MINT` (`0x4fe8b0`). Import the tokens from
+`../watchface/tokens.js` rather than repeating the hex values.
+
+Add to `package.json` scripts: `"icon": "node tools/make-icon.js"`.
+
+Run: `node tools/make-icon.js`
+Expected: writes `assets/active-2-round/images/icon.png`.
+
+- [ ] **Step 9: Verify both assets**
+
+Run: `sips -g pixelWidth -g pixelHeight assets/active-2-round/images/icon.png`
+Expected: `pixelWidth: 192` and `pixelHeight: 192`.
+
+- [ ] **Step 10: Commit**
 
 ```bash
-git add tools/ test/png.test.js assets/
-git commit -m "feat: generate landscape background with dependency-free PNG encoder"
+git add tools/ test/png.test.js assets/ package.json
+git commit -m "feat: generate background and icon with dependency-free PNG encoder"
 ```
 
 ---
@@ -1403,30 +1426,19 @@ git commit -m "feat: add weather, battery, stat cards, and activity pill"
 
 ---
 
-### Task 8: Preview asset, README, and push
+### Task 8: README and push
 
 **Files:**
-- Create: `assets/active-2-round/images/icon.png`
 - Create: `README.md`
-- Modify: `tools/make-background.js` (add icon output) or create `tools/make-icon.js`
 
 **Interfaces:**
 - Consumes: everything above
 - Produces: a complete, documented, pushed repository
 
-- [ ] **Step 1: Generate the icon**
-
-Create `tools/make-icon.js` producing a 192 × 192 PNG using `encodePNG`, drawn as a `COLOR.BG_DEEP` rounded field with a `COLOR.MINT` circle centred in it. Add `"icon": "node tools/make-icon.js"` to `package.json` scripts.
-
-Run: `node tools/make-icon.js`
-Expected: writes `assets/active-2-round/images/icon.png`.
-
-- [ ] **Step 2: Verify app.json icon path resolves**
-
-The `app.icon` field is `icon.png`, resolved relative to the target's assets directory. Confirm `assets/active-2-round/images/icon.png` exists.
+- [ ] **Step 1: Verify both assets exist**
 
 Run: `ls -l assets/active-2-round/images/`
-Expected: both `bg.png` and `icon.png` are listed.
+Expected: both `bg.png` and `icon.png` are listed (both generated in Task 5).
 
 - [ ] **Step 3: Final build**
 
