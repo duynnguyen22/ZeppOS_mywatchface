@@ -150,13 +150,12 @@ WatchFace({
     const weatherSensor = new Weather()
     const distanceSensor = new Distance()
 
-    // Weather icon: a simple sun disc, drawn the same way as the stat-card
-    // accent icons and the pill icon (a FILL_RECT with radius = half the
-    // side, which renders as a circle). No sun-behind-cloud composite.
-    hmUI.createWidget(hmUI.widget.FILL_RECT, {
+    // Weather icon: a generated sun-behind-cloud glyph (see
+    // tools/make-icons.js), scaled into the same slot the placeholder used.
+    hmUI.createWidget(hmUI.widget.IMG, {
       x: RECT.WEATHER_ICON.x, y: RECT.WEATHER_ICON.y,
       w: RECT.WEATHER_ICON.w, h: RECT.WEATHER_ICON.h,
-      radius: RECT.WEATHER_ICON.w / 2, color: COLOR.AMBER, show_level: normal,
+      src: IMG + 'ic-weather.png', show_level: normal,
     })
 
     const tempText = hmUI.createWidget(hmUI.widget.TEXT, {
@@ -195,9 +194,9 @@ WatchFace({
 
     // Stat cards: steps, heart rate, calories.
     const cards = [
-      { label: 'steps', color: COLOR.MINT },
-      { label: 'bpm', color: COLOR.CORAL },
-      { label: 'kcal', color: COLOR.AMBER },
+      { label: 'steps', color: COLOR.MINT, icon: 'ic-steps' },
+      { label: 'bpm', color: COLOR.CORAL, icon: 'ic-heart' },
+      { label: 'kcal', color: COLOR.AMBER, icon: 'ic-flame' },
     ].map((config, index) => {
       const box = statCard(index)
 
@@ -206,11 +205,10 @@ WatchFace({
         radius: 18, color: COLOR.CARD_BG, show_level: normal,
       })
 
-      // Accent dot standing in for the reference's glyph.
-      hmUI.createWidget(hmUI.widget.FILL_RECT, {
+      hmUI.createWidget(hmUI.widget.IMG, {
         x: box.x + CARD_INSET.ICON.dx, y: box.y + CARD_INSET.ICON.dy,
         w: CARD_INSET.ICON.w, h: CARD_INSET.ICON.h,
-        radius: 11, color: config.color, show_level: normal,
+        src: IMG + config.icon + '.png', show_level: normal,
       })
 
       const value = hmUI.createWidget(hmUI.widget.TEXT, {
@@ -256,7 +254,11 @@ WatchFace({
     })
     hmUI.createWidget(hmUI.widget.FILL_RECT, {
       x: RECT.PILL.x + 12, y: RECT.PILL.y + 12, w: 35, h: 35,
-      radius: 18, color: COLOR.MINT, show_level: normal,
+      radius: 18, color: COLOR.BG_DEEP, show_level: normal,
+    })
+    hmUI.createWidget(hmUI.widget.IMG, {
+      x: RECT.PILL.x + 12, y: RECT.PILL.y + 12, w: 35, h: 35,
+      src: IMG + 'ic-runner.png', show_level: normal,
     })
     hmUI.createWidget(hmUI.widget.TEXT, {
       x: RECT.PILL.x + 60, y: RECT.PILL.y + 8, w: 200, h: 26,
@@ -282,7 +284,12 @@ WatchFace({
     const updateData = () => {
       const battery = safeCurrent(batterySensor)
       batteryText.setProperty(hmUI.prop.TEXT, formatBattery(battery))
+      // prop.MORE replaces the widget's full geometry - a partial object
+      // zeroes out the x/y/h properties it omits, which is why the bar
+      // used to vanish. Always pass the complete rect, only w changing.
       batteryFill.setProperty(hmUI.prop.MORE, {
+        x: RECT.BATTERY_ICON.x + 3, y: RECT.BATTERY_ICON.y + 3,
+        h: RECT.BATTERY_ICON.h - 6,
         w: Math.max(1, Math.round(((RECT.BATTERY_ICON.w - 10) * Math.max(0, Math.min(100, battery || 0))) / 100)),
       })
 

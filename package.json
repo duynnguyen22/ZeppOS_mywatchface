@@ -7,6 +7,7 @@
     "test": "node --test 'test/**/*.test.js'",
     "background": "node tools/make-background.js",
     "icon": "node tools/make-icon.js",
+    "icons": "node tools/make-icons.js",
     "build": "cd app && zeus build",
     "dev": "cd app && zeus dev",
     "preview": "cd app && zeus preview"

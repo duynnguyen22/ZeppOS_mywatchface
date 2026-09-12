@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { SCREEN, CENTER, RADIUS, polar, fitsOnFace, RECT, statCard } = require('../app/watchface/layout.js')
+const { SCREEN, CENTER, RADIUS, polar, fitsOnFace, RECT, statCard, CARD, CARD_INSET } = require('../app/watchface/layout.js')
 
 function close(actual, expected, tol = 0.001) {
   assert.ok(Math.abs(actual - expected) <= tol, `${actual} != ${expected}`)
@@ -90,4 +90,19 @@ test('the stat card row is horizontally centred', () => {
 test('statCard rejects an out-of-range index', () => {
   assert.throws(() => statCard(3))
   assert.throws(() => statCard(-1))
+})
+
+test('the card icon and value have clear separation, not just a few px', () => {
+  const iconRight = CARD_INSET.ICON.dx + CARD_INSET.ICON.w
+  const gap = CARD_INSET.VALUE.dx - iconRight
+  assert.ok(gap >= 6, `icon-to-value gap is only ${gap}px`)
+})
+
+test('every CARD_INSET rect sits within the card bounds', () => {
+  for (const [name, inset] of Object.entries(CARD_INSET)) {
+    const right = inset.dx + inset.w
+    const bottom = inset.dy + inset.h
+    assert.ok(right <= CARD.w, `${name} right edge (${right}) exceeds card width (${CARD.w})`)
+    assert.ok(bottom <= CARD.h, `${name} bottom edge (${bottom}) exceeds card height (${CARD.h})`)
+  }
 })

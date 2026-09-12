@@ -52,3 +52,30 @@ test('the background file is a valid PNG', () => {
   const bytes = fs.readFileSync(bgAbsPath)
   assert.ok(bytes.subarray(0, 8).equals(PNG_SIGNATURE))
 })
+
+// index.js references these as 'images/ic-*.png', resolved from
+// assets/<target>/, for the weather icon, the three stat-card icons, and
+// the activity pill icon. Guarded the same way as bg.png above: nothing
+// else catches a missing or truncated icon file, and a missing asset makes
+// hmUI.getImageInfo() return 0x0, so the widget silently draws nothing.
+const iconNames = ['ic-weather', 'ic-steps', 'ic-heart', 'ic-flame', 'ic-runner']
+
+for (const name of iconNames) {
+  const iconPath = path.join(
+    __dirname, '..', 'app', 'assets', targetName, 'images', `${name}.png`
+  )
+
+  test(`${name}.png exists and is non-empty`, () => {
+    assert.ok(
+      fs.existsSync(iconPath),
+      `expected icon at ${iconPath}; run "npm run icons" to generate it`
+    )
+    const { size } = fs.statSync(iconPath)
+    assert.ok(size > 0, `${iconPath} exists but is empty`)
+  })
+
+  test(`${name}.png is a valid PNG`, () => {
+    const bytes = fs.readFileSync(iconPath)
+    assert.ok(bytes.subarray(0, 8).equals(PNG_SIGNATURE))
+  })
+}

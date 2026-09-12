@@ -57,11 +57,13 @@ for (let y = 0; y < H; y++) {
         b = lerp(b, 0x87, glow)
       }
 
-      // Mountain ridges, far to near.
+      // Mountain ridges, far to near. Each successive layer is markedly
+      // darker than the sky and than the layer behind it, so the silhouettes
+      // read as distinct bands instead of blending into a soft gradient.
       const ridges = [
-        { y: ridge(x, 1.0, 26, 252), c: [0x0b, 0x2a, 0x30] },
-        { y: ridge(x, 2.4, 34, 272), c: [0x07, 0x1f, 0x25] },
-        { y: ridge(x, 4.1, 22, 292), c: [0x04, 0x14, 0x19] },
+        { y: ridge(x, 1.0, 26, 252), c: [0x06, 0x1c, 0x21] },
+        { y: ridge(x, 2.4, 34, 272), c: [0x03, 0x12, 0x16] },
+        { y: ridge(x, 4.1, 22, 292), c: [0x01, 0x08, 0x0a] },
       ]
       for (const item of ridges) {
         if (y > item.y) {
@@ -71,15 +73,17 @@ for (let y = 0; y < H; y++) {
         }
       }
     } else {
-      // Water: darker, with a mirrored sun streak.
+      // Water: darker, with a narrow, contained mirrored-sun streak so it
+      // does not wash out the area behind the stat cards below.
       const t = (y - HORIZON) / (H - HORIZON)
-      r = lerp(0x05, 0x02, t)
-      g = lerp(0x1a, 0x0c, t)
-      b = lerp(0x20, 0x10, t)
+      r = lerp(0x04, 0x01, t)
+      g = lerp(0x14, 0x08, t)
+      b = lerp(0x18, 0x0c, t)
 
       const streak = Math.abs(x - 352)
-      if (streak < 26) {
-        const glow = (1 - streak / 26) * (1 - t) * 0.5
+      const streakWidth = lerp(14, 4, Math.min(1, t * 1.8))
+      if (streak < streakWidth && t < 0.55) {
+        const glow = (1 - streak / streakWidth) * (1 - t / 0.55) * 0.32
         r = lerp(r, 0xf0, glow)
         g = lerp(g, 0xc9, glow)
         b = lerp(b, 0x87, glow)
