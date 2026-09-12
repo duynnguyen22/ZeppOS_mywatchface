@@ -36,7 +36,7 @@ for (let y = 0; y < H; y++) {
   }
 }
 
-const outDir = path.join(__dirname, '..', 'app', 'assets', 'active-2-round', 'images')
+const outDir = path.join(__dirname, '..', 'app', 'assets', 'active-2-round')
 fs.mkdirSync(outDir, { recursive: true })
 const outPath = path.join(outDir, 'icon.png')
 fs.writeFileSync(outPath, encodePNG(W, H, pixels))
