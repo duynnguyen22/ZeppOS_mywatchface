@@ -79,6 +79,14 @@ test('formatHiLo renders both bounds', () => {
   assert.strictEqual(f.formatHiLo(32, 24), 'H:32° L:24°')
 })
 
+test('formatHiLo degrades missing bounds to -- instead of undefined', () => {
+  assert.strictEqual(f.formatHiLo(32, 24), 'H:32° L:24°')
+  assert.strictEqual(f.formatHiLo(undefined, 24), 'H:-- L:24°')
+  assert.strictEqual(f.formatHiLo(32, undefined), 'H:32° L:--')
+  assert.strictEqual(f.formatHiLo(null, null), 'H:-- L:--')
+  assert.strictEqual(f.formatHiLo(undefined, undefined), 'H:-- L:--')
+})
+
 test('formatHeart renders a dash when unavailable', () => {
   assert.strictEqual(f.formatHeart(72), '72')
   assert.strictEqual(f.formatHeart(0), '--')

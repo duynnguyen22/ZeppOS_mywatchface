@@ -7,7 +7,7 @@ const { RECT, statCard, CARD_INSET, CHART } = layout
 const {
   formatHour, formatMinute, meridiem, formatDate,
   formatSteps, formatBattery, formatTemp, formatHiLo,
-  formatHeart, formatCalories, formatDistance, formatDuration,
+  formatHeart, formatCalories, formatDistance,
 } = fmt
 
 const IMG = 'images/'
@@ -131,6 +131,7 @@ WatchFace({
     const heartSensor = hmSensor.createSensor(hmSensor.id.HEART)
     const calorieSensor = hmSensor.createSensor(hmSensor.id.CALORIE)
     const weatherSensor = hmSensor.createSensor(hmSensor.id.WEATHER)
+    const distanceSensor = hmSensor.createSensor(hmSensor.id.DISTANCE)
 
     const tempText = hmUI.createWidget(hmUI.widget.TEXT, {
       x: RECT.TEMP.x, y: RECT.TEMP.y, w: RECT.TEMP.w, h: RECT.TEMP.h,
@@ -235,7 +236,7 @@ WatchFace({
       x: RECT.PILL.x + 60, y: RECT.PILL.y + 8, w: 200, h: 26,
       color: COLOR.WHITE, text_size: TYPE.PILL_TITLE,
       align_h: hmUI.align.LEFT, align_v: hmUI.align.CENTER_V,
-      text: 'Outdoor Run', show_level: normal,
+      text: 'Today', show_level: normal,
     })
     const pillDetail = hmUI.createWidget(hmUI.widget.TEXT, {
       x: RECT.PILL.x + 60, y: RECT.PILL.y + 32, w: 200, h: 22,
@@ -266,9 +267,15 @@ WatchFace({
       cards[1].setProperty(hmUI.prop.TEXT, formatHeart(heartSensor.last))
       cards[2].setProperty(hmUI.prop.TEXT, formatCalories(calorieSensor.current))
 
+      // Unit assumption: DISTANCE.current is assumed to be metres, hence
+      // the /1000 below. This is unverified without real hardware - if the
+      // on-device reading is off by 1000x, this is the line to change.
+      const distanceMeters = distanceSensor.current
       pillDetail.setProperty(
         hmUI.prop.TEXT,
-        `${formatDistance(2.5)} · ${formatDuration(24)}`
+        distanceMeters === null || distanceMeters === undefined
+          ? '--'
+          : formatDistance(distanceMeters / 1000)
       )
     }
 

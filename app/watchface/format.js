@@ -43,7 +43,9 @@ function formatTemp(celsius) {
 }
 
 function formatHiLo(high, low) {
-  return `H:${high}° L:${low}°`
+  const hi = high === null || high === undefined ? '--' : `${high}°`
+  const lo = low === null || low === undefined ? '--' : `${low}°`
+  return `H:${hi} L:${lo}`
 }
 
 function formatHeart(bpm) {
