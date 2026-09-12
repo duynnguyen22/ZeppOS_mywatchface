@@ -41,7 +41,7 @@ function frameName(key, index) {
 function createScene(env) {
   const { COLOR, TYPE, GOAL, TAGLINE, TRACKING } = env
   const { RECT, GAUGE, ARC_FRAMES, arcBox, TIME_CENTRE, TIME_GAP } = env
-  const { ratio, frameIndex, litDashes, resolveTarget } = env
+  const { ratio, bandRatio, frameIndex, litDashes, resolveTarget } = env
   const { centreRun } = env
   const { formatSteps, formatMetric, formatBattery, formatDate } = env
 
@@ -90,8 +90,8 @@ function createScene(env) {
     frameIndex(ratio(data.steps, resolveTarget(data.stepGoal, GOAL.STEPS)), ARC_FRAMES)))
   els.push(arcElement('kcal', GAUGE.KCAL,
     frameIndex(ratio(data.kcal, GOAL.KCAL), ARC_FRAMES)))
-  els.push(arcElement('stress', GAUGE.STRESS,
-    litDashes(ratio(data.stress, GOAL.STRESS), GAUGE.STRESS.dashes)))
+  els.push(arcElement('hr', GAUGE.HR,
+    litDashes(bandRatio(data.hr, GOAL.HR.MIN, GOAL.HR.MAX), GAUGE.HR.dashes)))
 
   // Layer 4: the battery readout. The glyph is two rects rather than an
   // image because FILL_RECT is one of the few widgets verified on this
@@ -149,10 +149,10 @@ function createScene(env) {
     'center', 0, 'steps.value'))
   els.push(text(RECT.STEPS_LABEL, 'STEPS', TYPE.LABEL, COLOR.SECONDARY, 'center', TRACKING))
 
-  els.push({ kind: 'image', src: `${IMG}ic-stress.png`, ...RECT.STRESS_ICON })
-  els.push(text(RECT.STRESS_VALUE, formatMetric(data.stress), TYPE.METRIC_VALUE, COLOR.WHITE,
-    'center', 0, 'stress.value'))
-  els.push(text(RECT.STRESS_LABEL, 'STRESS', TYPE.LABEL, COLOR.SECONDARY, 'center', TRACKING))
+  els.push({ kind: 'image', src: `${IMG}ic-hr.png`, ...RECT.HR_ICON })
+  els.push(text(RECT.HR_VALUE, formatMetric(data.hr), TYPE.METRIC_VALUE, COLOR.WHITE,
+    'center', 0, 'hr.value'))
+  els.push(text(RECT.HR_LABEL, 'BPM', TYPE.LABEL, COLOR.SECONDARY, 'center', TRACKING))
 
   els.push({ kind: 'image', src: `${IMG}ic-kcal.png`, ...RECT.KCAL_ICON })
   els.push(text(RECT.KCAL_VALUE, formatMetric(data.kcal), TYPE.METRIC_VALUE, COLOR.WHITE,

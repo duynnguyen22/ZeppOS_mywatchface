@@ -57,7 +57,7 @@ test('the background file is a valid PNG', () => {
 // assets/<target>/, one per metric. Guarded the same way as bg.png above: nothing
 // else catches a missing or truncated icon file, and a missing asset makes
 // hmUI.getImageInfo() return 0x0, so the widget silently draws nothing.
-const iconNames = ['ic-steps', 'ic-stress', 'ic-kcal']
+const iconNames = ['ic-steps', 'ic-hr', 'ic-kcal']
 
 for (const name of iconNames) {
   const iconPath = path.join(

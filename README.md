@@ -3,7 +3,7 @@
 A custom Zepp OS watch face for the **Amazfit Active 2, Round variant**,
 implementing the design in [`reference-new.png`](./reference-new.png): a
 black AMOLED face with a battery arc, a large two-tone digital clock in a
-generated squared typeface, and three metrics (steps, stress, calories)
+generated squared typeface, and three metrics (steps, heart rate, calories)
 on ring gauges, wrapped in sparse technical chrome.
 
 The design brief is deliberately restrictive, and the code enforces the
@@ -13,7 +13,8 @@ parts of it that are enforceable:
   fails if any second chromatic hue enters the palette.
 - **A 20-25px safe area**, not merely "not clipped by the bezel".
 - **No invented data.** A sensor with no reading renders `--` and an empty
-  gauge. The stress dial in particular never falls back to heart rate.
+  gauge. The bpm dial in particular is never filled in from another
+  metric to keep it looking alive.
 
 | | |
 |---|---|
@@ -243,14 +244,13 @@ found — the prelude to a runtime failure.
 
 ## Not implemented from the reference
 
-- **Weather, heart rate, SpO2, notifications and music are absent by
-  design**, per the brief. Their permissions have been removed from
-  `app.json` too.
-- **The stress dial may never populate.** Stress is not part of the
-  documented `@zos/sensor` surface at this API level. The face probes for
-  it and shows `--` with an empty dial when it is missing. It deliberately
-  does **not** substitute heart rate: a different metric under a `STRESS`
-  label would misreport what the wearer is reading.
+- **Weather, SpO2, notifications and music are absent by design**, per the
+  brief. Their permissions have been removed from `app.json` too.
+- **The bpm dial reads `--` until the optical sensor samples.** It runs on
+  its own schedule, not the face's, so an empty dial shortly after a wrist
+  raise is expected rather than a fault. The dial spans a 40-180bpm band
+  instead of 0-180: a dial filling from zero would sit near a third all
+  day and never visibly move.
 - **Always-on display shows the time and date only.** Arcs and metrics
   there would cost battery for something the panel barely renders.
 
@@ -258,20 +258,19 @@ found — the prelude to a runtime failure.
 
 Verified locally:
 
-- `npm test` — 149/149 passing.
+- `npm test` — 157/157 passing.
 - `npm run build` — produces a 270 KB `.zab` with no rollup warnings.
 - `npm run assets` — regenerating every asset is byte-identical, so the
   artwork is reproducible from source.
 - The full composition renders correctly off-device: `scene.js` is pure,
   so a preview tool renders the exact descriptor list the watch consumes.
   Checked at both extremes — a full face and one with a dead battery, a
-  one-digit hour and a missing stress sensor.
+  one-digit hour and a silent heart rate sensor.
 
 Still **not** verified:
 
 - **Anything on real hardware, or even the simulator.** This redesign has
   not been run on a device. "Builds cleanly" is not "renders correctly".
-- **Whether a stress sensor exists at all** on this runtime.
 - **Whether `Step.getTarget()` exists.** The steps ring prefers the goal
   set in the Zepp app and falls back to 10,000 when the call is absent.
 - **System font metrics.** Every text widget is sized from the reference's
@@ -320,13 +319,12 @@ to read the device console programmatically when debugging.
 ```json
 "permissions": [
   "data:user.hd.step",
-  "data:user.hd.heart_rate",
   "data:user.hd.calorie",
-  "data:user.hd.stress"
+  "data:user.hd.heart_rate"
 ]
 ```
 
-Without these, constructing `Step` or `Calorie` throws
+Without these, constructing `Step`, `Calorie` or `HeartRate` throws
 `PERMISSION DENIED data:user.hd.<name>` and the metric sits empty. This
 fails the same silent way as the API mismatch above — which is why every
 sensor here is constructed and read inside a `try`, and a failure renders

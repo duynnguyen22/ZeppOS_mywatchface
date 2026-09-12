@@ -41,7 +41,7 @@ const GAUGE = {
   BATTERY: { cx: 233, cy: 157, rInner: 120, rOuter: 127, start: 322, span: 76, dir: 1 },
   STEPS: { cx: 125, cy: 334, rInner: 46, rOuter: 52, start: 0, span: 180, dir: 1 },
   KCAL: { cx: 341, cy: 334, rInner: 46, rOuter: 52, start: 0, span: 180, dir: -1 },
-  STRESS: { cx: 233, cy: 334, rInner: 33, rOuter: 38, start: 292, span: 120, dir: 1, dashes: 24 },
+  HR: { cx: 233, cy: 334, rInner: 33, rOuter: 38, start: 292, span: 120, dir: 1, dashes: 24 },
 }
 
 // Sprite granularity for the three smooth arcs: 21 frames = 5% steps.
@@ -72,9 +72,12 @@ const RECT = {
   STEPS_VALUE: { x: 65, y: 329, w: 120, h: 20 },
   STEPS_LABEL: { x: 75, y: 351, w: 100, h: 14 },
 
-  STRESS_ICON: { x: 225, y: 311, w: 16, h: 19 },
-  STRESS_VALUE: { x: 193, y: 332, w: 80, h: 18 },
-  STRESS_LABEL: { x: 183, y: 350, w: 100, h: 14 },
+  // The heart glyph is wider than it is tall, unlike the torso it
+  // replaced, so its box is 19x17 rather than 16x19 - still centred on the
+  // dial's x=233.
+  HR_ICON: { x: 224, y: 312, w: 19, h: 17 },
+  HR_VALUE: { x: 193, y: 332, w: 80, h: 18 },
+  HR_LABEL: { x: 183, y: 350, w: 100, h: 14 },
 
   KCAL_ICON: { x: 329, y: 301, w: 22, h: 27 },
   KCAL_VALUE: { x: 281, y: 329, w: 120, h: 20 },

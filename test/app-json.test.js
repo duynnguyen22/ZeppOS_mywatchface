@@ -62,7 +62,8 @@ test('permissions match the sensors the face actually reads', () => {
   const declared = new Set(config.permissions)
   assert.ok(declared.has('data:user.hd.step'), 'steps ring needs the step permission')
   assert.ok(declared.has('data:user.hd.calorie'), 'kcal ring needs the calorie permission')
-  for (const gone of ['data:user.hd.weather', 'data:user.hd.distance', 'data:user.hd.heart_rate']) {
+  assert.ok(declared.has('data:user.hd.heart_rate'), 'the bpm dial needs the heart rate permission')
+  for (const gone of ['data:user.hd.weather', 'data:user.hd.distance', 'data:user.hd.stress']) {
     assert.ok(!declared.has(gone), `${gone} is no longer read by this face`)
   }
 })

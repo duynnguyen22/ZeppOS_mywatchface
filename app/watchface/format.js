@@ -39,7 +39,7 @@ function formatBattery(percent) {
   return `${Math.max(0, Math.min(100, Math.round(percent)))}%`
 }
 
-// Any plain whole-number readout: calories, the stress index.
+// Any plain whole-number readout: calories, heart rate in bpm.
 function formatMetric(value) {
   if (!Number.isFinite(value)) return NO_VALUE
   return String(Math.max(0, Math.round(value)))

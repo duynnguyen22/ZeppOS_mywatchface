@@ -18,11 +18,11 @@ const buildScene = createScene(env)
 
 const FULL = {
   hour: 10, minute: 28, weekday: 6, day: 12,
-  battery: 78, steps: 8421, stress: 32, kcal: 520, stepGoal: null,
+  battery: 78, steps: 8421, hr: 72, kcal: 520, stepGoal: null,
 }
 const EMPTY = {
   hour: 0, minute: 0, weekday: 1, day: 1,
-  battery: null, steps: null, stress: null, kcal: null, stepGoal: null,
+  battery: null, steps: null, hr: null, kcal: null, stepGoal: null,
 }
 
 const ASSETS = path.join(__dirname, '..', 'app', 'assets', 'active-2-round')
@@ -37,7 +37,7 @@ test('every image the scene references actually exists on disk', () => {
   // the widget silently draws nothing. With ~90 generated arc frames, one
   // wrong index would be invisible until someone noticed a blank gauge.
   const seen = new Set()
-  for (const data of [FULL, EMPTY, { ...FULL, battery: 100, steps: 99999, stress: 100, kcal: 9999 }]) {
+  for (const data of [FULL, EMPTY, { ...FULL, battery: 100, steps: 99999, hr: 200, kcal: 9999 }]) {
     for (const el of buildScene(data)) {
       if (el.kind === 'image' && el.src) seen.add(el.src)
     }
@@ -51,7 +51,7 @@ test('every image the scene references actually exists on disk', () => {
 test('every arc frame index the gauges can produce has a file', () => {
   // Walk the full 0-100% range rather than trusting a couple of samples.
   for (let pct = 0; pct <= 100; pct++) {
-    for (const el of buildScene({ ...FULL, battery: pct, steps: pct * 200, kcal: pct * 8, stress: pct })) {
+    for (const el of buildScene({ ...FULL, battery: pct, steps: pct * 200, kcal: pct * 8, hr: 40 + pct * 1.4 })) {
       if (el.kind === 'image' && el.src) {
         assert.ok(fs.existsSync(path.join(ASSETS, el.src)), `missing ${el.src} at ${pct}%`)
       }
@@ -107,15 +107,32 @@ test('a missing reading leaves its gauge empty rather than full', () => {
   }
 })
 
-test('the stress dial never falls back to heart rate', () => {
-  // The brief rules heart rate out entirely. If stress is unavailable the
-  // dial shows a dash - substituting a different metric under a STRESS
-  // label would misreport what the wearer is looking at.
-  const labels = buildScene(EMPTY).filter((e) => e.kind === 'text').map((e) => String(e.text).toUpperCase())
-  assert.ok(labels.includes('STRESS'))
-  for (const bad of ['BPM', 'HR', 'HEART']) {
-    assert.ok(!labels.includes(bad), `the face must never label anything ${bad}`)
+test('the bpm dial shows a dash rather than borrowing another metric', () => {
+  // The optical sensor samples on its own schedule, so "no reading yet" is
+  // the normal state, not an edge case. Filling the dial from steps or
+  // calories to keep it looking alive would misreport what the wearer is
+  // looking at.
+  const els = buildScene({ ...FULL, hr: null })
+  const labels = els.filter((e) => e.kind === 'text').map((e) => String(e.text).toUpperCase())
+  assert.ok(labels.includes('BPM'))
+  assert.strictEqual(els.find((e) => e.key === 'hr.value').text, '--')
+  assert.ok(els.find((e) => e.key === 'arc.hr').src.endsWith('-00.png'))
+})
+
+test('the bpm dial fills across the resting-to-effort band, not from zero', () => {
+  const litOf = (hr) => {
+    const src = buildScene({ ...FULL, hr }).find((e) => e.key === 'arc.hr').src
+    return Number(src.match(/-(\d+)\.png$/)[1])
   }
+  // 40bpm is the floor and 180 the ceiling; 110 is the midpoint of 24 dashes.
+  assert.strictEqual(litOf(40), 0)
+  assert.strictEqual(litOf(110), 12)
+  assert.strictEqual(litOf(180), 24)
+  // A resting reading still moves the dial off empty, which is the whole
+  // point of banding it rather than dividing by 180.
+  assert.ok(litOf(62) > 0)
+  // Nothing overfills past the last frame the generator emitted.
+  assert.strictEqual(litOf(240), 24)
 })
 
 test('every element the scene emits stays inside the safe area', () => {
@@ -153,10 +170,10 @@ test('extreme values do not shift the layout', () => {
     const el = buildScene(data).find((e) => e.key === key)
     return `${el.x},${el.y},${el.w},${el.h}`
   }
-  for (const key of ['steps.value', 'kcal.value', 'stress.value', 'battery.pct']) {
+  for (const key of ['steps.value', 'kcal.value', 'hr.value', 'battery.pct']) {
     assert.strictEqual(
-      boxOf({ ...FULL, steps: 8, kcal: 4, stress: 1, battery: 5 }, key),
-      boxOf({ ...FULL, steps: 199999, kcal: 9999, stress: 100, battery: 100 }, key),
+      boxOf({ ...FULL, steps: 8, kcal: 4, hr: 48, battery: 5 }, key),
+      boxOf({ ...FULL, steps: 199999, kcal: 9999, hr: 199, battery: 100 }, key),
       `${key} moved when its value grew`
     )
   }

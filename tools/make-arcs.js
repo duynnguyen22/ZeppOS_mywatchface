@@ -43,7 +43,7 @@ function renderArc(g, ratio) {
   return { box, buffer: downsample(big, SS).toBuffer() }
 }
 
-// The stress dial is discrete: `lit` dashes drawn bold, the rest absent
+// The bpm dial is discrete: `lit` dashes drawn bold, the rest absent
 // (the unlit ticks live in the static background).
 function renderDashes(g, lit) {
   const box = arcBox(g)
@@ -87,8 +87,8 @@ for (const key of ['BATTERY', 'STEPS', 'KCAL']) {
     emit(`arc-${key.toLowerCase()}-${String(i).padStart(2, '0')}`, renderArc(g, i / (ARC_FRAMES - 1)))
   }
 }
-for (let lit = 0; lit <= GAUGE.STRESS.dashes; lit++) {
-  emit(`arc-stress-${String(lit).padStart(2, '0')}`, renderDashes(GAUGE.STRESS, lit))
+for (let lit = 0; lit <= GAUGE.HR.dashes; lit++) {
+  emit(`arc-hr-${String(lit).padStart(2, '0')}`, renderDashes(GAUGE.HR, lit))
 }
 
 console.log(`wrote ${files} arc frames, ${(bytes / 1024).toFixed(1)} KB total`)

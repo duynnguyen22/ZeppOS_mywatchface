@@ -75,9 +75,21 @@ test('the time is the largest type size', () => {
 })
 
 test('every goal is a positive number the rings can divide by', () => {
+  // HR is a band rather than a denominator - it is checked below instead.
   for (const [name, value] of Object.entries(GOAL)) {
+    if (name === 'HR') continue
     assert.ok(typeof value === 'number' && value > 0, `${name} must be positive`)
   }
+})
+
+test('the heart rate band is a usable range, not a denominator', () => {
+  // bandRatio divides by MAX - MIN, so an inverted or empty band would
+  // silently park the dial at empty forever.
+  assert.ok(Number.isFinite(GOAL.HR.MIN) && GOAL.HR.MIN > 0)
+  assert.ok(Number.isFinite(GOAL.HR.MAX) && GOAL.HR.MAX > GOAL.HR.MIN)
+  // A resting adult pulse has to sit inside the band, or the dial reads
+  // empty all day and tells the wearer nothing.
+  assert.ok(GOAL.HR.MIN < 60 && GOAL.HR.MAX > 100)
 })
 
 test('every tagline block is a non-empty list of non-empty strings', () => {

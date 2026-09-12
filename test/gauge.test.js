@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { ratio, frameIndex, litDashes, resolveTarget } = require('../app/watchface/gauge.js')
+const { ratio, bandRatio, frameIndex, litDashes, resolveTarget } = require('../app/watchface/gauge.js')
 
 // --- ratio ------------------------------------------------------------
 // Everything on this face that fills - the battery arc, both rings, the
@@ -78,4 +78,37 @@ test('resolveTarget falls back when the sensor gives nothing usable', () => {
   assert.strictEqual(resolveTarget(0, 10000), 10000)
   assert.strictEqual(resolveTarget(-3, 10000), 10000)
   assert.strictEqual(resolveTarget('lots', 10000), 10000)
+})
+
+// --- bandRatio --------------------------------------------------------
+// Heart rate has no natural zero the way a step goal does: a living wearer
+// never reads 0 bpm, so filling from 0 would leave the dial parked around
+// a third and barely moving. It fills across a resting-to-effort band
+// instead, so the dashes travel over the range readings actually occupy.
+
+test('bandRatio is empty at the floor and full at the ceiling', () => {
+  assert.strictEqual(bandRatio(40, 40, 180), 0)
+  assert.strictEqual(bandRatio(180, 40, 180), 1)
+})
+
+test('bandRatio is the fraction of the way through the band', () => {
+  assert.strictEqual(bandRatio(110, 40, 180), 0.5)
+  assert.strictEqual(bandRatio(75, 40, 180), 0.25)
+})
+
+test('bandRatio clamps outside the band rather than over- or underfilling', () => {
+  assert.strictEqual(bandRatio(35, 40, 180), 0)
+  assert.strictEqual(bandRatio(210, 40, 180), 1)
+})
+
+test('bandRatio treats a missing reading as empty, not as NaN', () => {
+  assert.strictEqual(bandRatio(null, 40, 180), 0)
+  assert.strictEqual(bandRatio(undefined, 40, 180), 0)
+  assert.strictEqual(bandRatio('72', 40, 180), 0)
+})
+
+test('bandRatio treats a nonsensical band as empty rather than dividing by zero', () => {
+  assert.strictEqual(bandRatio(100, 40, 40), 0)
+  assert.strictEqual(bandRatio(100, 180, 40), 0)
+  assert.strictEqual(bandRatio(100, null, 180), 0)
 })

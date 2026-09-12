@@ -122,7 +122,7 @@ test('the two ring gauges mirror each other about the face centre', () => {
 })
 
 test('the dashed dial declares how many dashes it has', () => {
-  assert.ok(Number.isInteger(GAUGE.STRESS.dashes) && GAUGE.STRESS.dashes > 0)
+  assert.ok(Number.isInteger(GAUGE.HR.dashes) && GAUGE.HR.dashes > 0)
 })
 
 test('there are enough arc frames for a visually smooth fill', () => {
@@ -134,7 +134,7 @@ test('the time run is centred near the middle of the face', () => {
 })
 
 test('the three gauge value readouts do not overlap each other', () => {
-  const boxes = [RECT.STEPS_VALUE, RECT.STRESS_VALUE, RECT.KCAL_VALUE]
+  const boxes = [RECT.STEPS_VALUE, RECT.HR_VALUE, RECT.KCAL_VALUE]
     .slice()
     .sort((a, b) => a.x - b.x)
   for (let i = 1; i < boxes.length; i++) {
@@ -198,7 +198,7 @@ test('arcBox returns whole pixels, since it becomes an image origin', () => {
 test('no metric value box overlaps the label beneath it', () => {
   const pairs = [
     ['steps', RECT.STEPS_VALUE, RECT.STEPS_LABEL],
-    ['stress', RECT.STRESS_VALUE, RECT.STRESS_LABEL],
+    ['hr', RECT.HR_VALUE, RECT.HR_LABEL],
     ['kcal', RECT.KCAL_VALUE, RECT.KCAL_LABEL],
   ]
   for (const [name, value, label] of pairs) {
@@ -212,7 +212,7 @@ test('no metric value box overlaps the label beneath it', () => {
 test('no metric icon overlaps the value beneath it', () => {
   const pairs = [
     ['steps', RECT.STEPS_ICON, RECT.STEPS_VALUE],
-    ['stress', RECT.STRESS_ICON, RECT.STRESS_VALUE],
+    ['hr', RECT.HR_ICON, RECT.HR_VALUE],
     ['kcal', RECT.KCAL_ICON, RECT.KCAL_VALUE],
   ]
   for (const [name, icon, value] of pairs) {

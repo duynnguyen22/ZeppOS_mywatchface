@@ -1,4 +1,4 @@
-// Generates the three metric glyphs: a footprint, a torso for the stress
+// Generates the three metric glyphs: a footprint, a heart for the bpm
 // dial, and a flame. All in the single accent colour - the palette rule
 // allows no second hue, so these are not colour-coded per metric.
 //
@@ -78,14 +78,20 @@ const steps = icon('ic-steps', RECT.STEPS_ICON, ({ circle, path }) => {
   circle(29, 9, 2.4)
 })
 
-// A head and shoulders for the stress dial - the smallest glyph on the
-// face, so it is two shapes and nothing more.
-const stress = icon('ic-stress', RECT.STRESS_ICON, ({ circle, rr }) => {
-  // A dome drawn as a two-point curve encloses almost no area once the
-  // control point is inside the chord, so the body is a rounded rect. At
-  // 16px that reads as a torso and a curve does not.
-  circle(22, 12, 8.5)
-  rr(6, 25, 32, 19, 9)
+// A heart for the bpm dial - the smallest glyph on the face, so it is
+// built from primitives that survive being rasterised at 17px rather than
+// from a curve whose shoulders would vanish.
+const hr = icon('ic-hr', RECT.HR_ICON, ({ circle, path }) => {
+  // Two lobes and a wedge. The lobes' outer edges (x=5 and x=39) are
+  // exactly where the wedge's top corners sit, so the silhouette closes
+  // into one shape with no notch at the shoulders.
+  circle(11.5, 16, 11)
+  circle(32.5, 16, 11)
+  path([
+    { x: 0.5, y: 17.5 },
+    { x: 43.5, y: 17.5 },
+    { x: 22, y: 42 },
+  ])
 })
 
 // A flame: one continuous silhouette with a wide base and a licking tongue
@@ -103,7 +109,7 @@ const kcal = icon('ic-kcal', RECT.KCAL_ICON, ({ path }) => {
 
 const outDir = path.join(__dirname, '..', 'app', 'assets', 'active-2-round', 'images')
 fs.mkdirSync(outDir, { recursive: true })
-for (const { name, w, h, buffer } of [steps, stress, kcal]) {
+for (const { name, w, h, buffer } of [steps, hr, kcal]) {
   fs.writeFileSync(path.join(outDir, `${name}.png`), encodePNG(w, h, buffer))
   console.log(`wrote ${name}.png (${w}x${h})`)
 }

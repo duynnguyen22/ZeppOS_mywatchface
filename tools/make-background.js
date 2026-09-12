@@ -79,10 +79,10 @@ for (const key of ['STEPS', 'KCAL']) {
   gaugeArc(g, 0, 359.99, COLOR.CHROME, 190) // a full circle behind each ring
 }
 
-// The stress dial's unlit ticks: fine hairlines, deliberately much lighter
+// The bpm dial's unlit ticks: fine hairlines, deliberately much lighter
 // than the bold dashes that light up over them.
 {
-  const g = GAUGE.STRESS
+  const g = GAUGE.HR
   const step = g.span / g.dashes
   for (let i = 0; i < g.dashes; i++) {
     gaugeArc(g, g.start + i * step, step * 0.3, COLOR.CHROME, 235)

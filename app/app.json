@@ -15,7 +15,7 @@
   "permissions": [
     "data:user.hd.step",
     "data:user.hd.calorie",
-    "data:user.hd.stress"
+    "data:user.hd.heart_rate"
   ],
   "runtime": {
     "apiVersion": {

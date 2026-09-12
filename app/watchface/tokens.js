@@ -25,11 +25,13 @@ const TYPE = {
 
 // Ring denominators. STEPS is only a fallback - the face prefers the goal
 // set in the Zepp app where the runtime exposes it. Nothing reports a
-// calorie goal, and stress is already a 0-100 index.
+// calorie goal. Heart rate is not a goal at all but a band: the dial fills
+// from a resting 40bpm to a hard-effort 180, because a dial that started at
+// 0bpm would sit near a third all day and never visibly move.
 const GOAL = {
   STEPS: 10000,
   KCAL: 600,
-  STRESS: 100,
+  HR: { MIN: 40, MAX: 180 },
 }
 
 // Shown when a sensor has no reading. Never substitute a different metric

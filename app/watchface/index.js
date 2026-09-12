@@ -1,6 +1,6 @@
 import * as hmUI from '@zos/ui'
 import { getScene, SCENE_AOD, SCENE_WATCHFACE } from '@zos/app'
-import { Time, Battery, Step, Calorie } from '@zos/sensor'
+import { Time, Battery, Step, Calorie, HeartRate } from '@zos/sensor'
 
 import * as tokens from './tokens.js'
 import * as layout from './layout.js'
@@ -85,19 +85,13 @@ WatchFace({
     const step = makeSensor(Step)
     const calorie = makeSensor(Calorie)
 
-    // Stress is not part of the documented @zos/sensor surface at this API
-    // level. It is probed rather than assumed, and when it is absent the
-    // dial shows '--' with an empty gauge. It deliberately does NOT fall
-    // back to heart rate: showing a different metric under a STRESS label
-    // would be a lie, and the brief rules heart rate out entirely.
-    let stress = null
-    try {
-      // eslint-disable-next-line global-require
-      const sensors = require('@zos/sensor')
-      stress = makeSensor(sensors.Stress)
-    } catch (e) {
-      stress = null
-    }
+    // HeartRate is a documented class on this API level and was verified
+    // reporting on the simulator, so it is constructed like the rest rather
+    // than probed the way the old Stress sensor had to be. Until it has a
+    // reading - the optical sensor samples on its own schedule, not ours -
+    // the dial stays empty and the value shows '--'. It is never filled in
+    // from another metric.
+    const heart = makeSensor(HeartRate)
 
     function collect() {
       return {
@@ -107,7 +101,7 @@ WatchFace({
         day: time.getDate(),
         battery: read(battery),
         steps: read(step),
-        stress: read(stress),
+        hr: read(heart),
         kcal: read(calorie),
         stepGoal: readStepGoal(step),
       }

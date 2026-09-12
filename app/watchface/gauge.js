@@ -13,6 +13,20 @@ function ratio(value, target) {
   return Math.min(1, value / target)
 }
 
+// A reading's position within a band, clamped to 0..1. Heart rate has no
+// meaningful zero - a living wearer never reads 0 bpm - so filling it from
+// zero would park the dial around a third and leave it nearly motionless.
+// Filling from `min` to `max` spends the dial's whole travel on the range
+// real readings occupy. A band that is not a usable range reads empty
+// rather than producing NaN or a division by zero.
+function bandRatio(value, min, max) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0
+  if (typeof min !== 'number' || !Number.isFinite(min)) return 0
+  if (typeof max !== 'number' || !Number.isFinite(max)) return 0
+  if (max <= min) return 0
+  return Math.max(0, Math.min(1, (value - min) / (max - min)))
+}
+
 // Arc fills are pre-rendered sprites; this picks the nearest one. Frame 0
 // is empty, frame `count - 1` is full.
 function frameIndex(r, count) {
@@ -35,4 +49,4 @@ function resolveTarget(sensorGoal, fallback) {
   return fallback
 }
 
-module.exports = { ratio, frameIndex, litDashes, resolveTarget }
+module.exports = { ratio, bandRatio, frameIndex, litDashes, resolveTarget }
