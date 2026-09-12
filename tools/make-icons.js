@@ -9,28 +9,38 @@ const { encodePNG } = require('./png.js')
 const { renderSupersampled, fillCircle, fillEllipse, fillCapsule, fillPoly } = require('./draw.js')
 const { COLOR } = require('../app/watchface/tokens.js')
 
-const SIZE = 44
+// Icons are AUTHORED in a 0..44 coordinate space, but each one is RENDERED
+// at the exact pixel size of the widget that displays it. This matters:
+// Zepp IMG widgets do not scale their source - they draw at native size and
+// crop to the widget box. A 44x44 asset in a 22x22 slot loses three quarters
+// of the glyph, which is why these first appeared as unrecognisable blobs.
+const AUTHOR = 44
 const SCALE = 4
 const CLOUD = 0xdfe8ea
 
-// Every icon is authored in 0..SIZE "unit space"; this wraps a canvas +
-// scale factor so shape calls can be written in those unit coordinates.
-function icon(name, draw) {
-  const canvas = renderSupersampled(SIZE, SIZE, SCALE, (big, s) => {
-    const circle = (cx, cy, r, color) => fillCircle(big, cx * s, cy * s, r * s, color)
+// Output sizes, each matching its widget box exactly.
+const SIZE_WEATHER = 30 // RECT.WEATHER_ICON
+const SIZE_CARD = 26    // CARD_INSET.ICON
+const SIZE_PILL = 35    // pill icon box in index.js
+
+function icon(name, outSize, draw) {
+  const canvas = renderSupersampled(outSize, outSize, SCALE, (big, s) => {
+    // unit space (0..AUTHOR) -> supersampled pixels
+    const u = (s * outSize) / AUTHOR
+    const circle = (cx, cy, r, color) => fillCircle(big, cx * u, cy * u, r * u, color)
     const ellipse = (cx, cy, rx, ry, color) =>
-      fillEllipse(big, cx * s, cy * s, rx * s, ry * s, color)
+      fillEllipse(big, cx * u, cy * u, rx * u, ry * u, color)
     const capsule = (x1, y1, x2, y2, thickness, color) =>
-      fillCapsule(big, x1 * s, y1 * s, x2 * s, y2 * s, thickness * s, color)
-    const poly = (points, color) => fillPoly(big, points.map(([x, y]) => [x * s, y * s]), color)
+      fillCapsule(big, x1 * u, y1 * u, x2 * u, y2 * u, thickness * u, color)
+    const poly = (points, color) => fillPoly(big, points.map(([x, y]) => [x * u, y * u]), color)
     draw({ circle, ellipse, capsule, poly })
   })
-  return { name, buffer: canvas.toBuffer() }
+  return { name, size: outSize, buffer: canvas.toBuffer() }
 }
 
 // Sun behind a cloud: sun disc peeking from the upper right, cloud built
 // from overlapping circles plus a rounded base.
-const weather = icon('ic-weather', ({ circle, capsule }) => {
+const weather = icon('ic-weather', SIZE_WEATHER, ({ circle, capsule }) => {
   circle(32, 11, 7.5, COLOR.AMBER)
   capsule(11, 27, 33, 27, 15, CLOUD)
   circle(15, 20, 7.5, CLOUD)
@@ -40,7 +50,7 @@ const weather = icon('ic-weather', ({ circle, capsule }) => {
 
 // A footprint: one large rounded sole plus a row of toe circles above it -
 // reads more clearly than a shoe at this size.
-const steps = icon('ic-steps', ({ ellipse, circle }) => {
+const steps = icon('ic-steps', SIZE_CARD, ({ ellipse, circle }) => {
   ellipse(23, 30, 10, 13, COLOR.MINT)
   circle(11.5, 15, 3.1, COLOR.MINT)
   circle(18, 10.5, 3.6, COLOR.MINT)
@@ -51,7 +61,7 @@ const steps = icon('ic-steps', ({ ellipse, circle }) => {
 
 // A heart: two overlapping circles for the lobes plus a downward triangle
 // for the point, smoothed by the circles covering the triangle's top edge.
-const heart = icon('ic-heart', ({ poly, circle }) => {
+const heart = icon('ic-heart', SIZE_CARD, ({ poly, circle }) => {
   poly(
     [
       [7, 19],
@@ -67,7 +77,7 @@ const heart = icon('ic-heart', ({ poly, circle }) => {
 // A rounded teardrop: a wide round base (an ellipse) plus a tapering tip
 // that leans to one side (a polygon licking up and over), the same colour
 // so the two shapes read as one continuous flame.
-const flame = icon('ic-flame', ({ ellipse, poly }) => {
+const flame = icon('ic-flame', SIZE_CARD, ({ ellipse, poly }) => {
   ellipse(22, 29, 8.5, 10, COLOR.AMBER)
   poly(
     [
@@ -83,7 +93,7 @@ const flame = icon('ic-flame', ({ ellipse, poly }) => {
 
 // A running figure: head, torso, and angled limbs built from capsules in a
 // forward-leaning stride.
-const runner = icon('ic-runner', ({ circle, capsule }) => {
+const runner = icon('ic-runner', SIZE_PILL, ({ circle, capsule }) => {
   circle(27, 10, 4.6, COLOR.MINT)
   capsule(25, 15, 18, 25, 6.5, COLOR.MINT)
   // Arms.
@@ -101,8 +111,8 @@ const icons = [weather, steps, heart, flame, runner]
 
 const outDir = path.join(__dirname, '..', 'app', 'assets', 'active-2-round', 'images')
 fs.mkdirSync(outDir, { recursive: true })
-for (const { name, buffer } of icons) {
+for (const { name, size, buffer } of icons) {
   const outPath = path.join(outDir, `${name}.png`)
-  fs.writeFileSync(outPath, encodePNG(SIZE, SIZE, buffer))
+  fs.writeFileSync(outPath, encodePNG(size, size, buffer))
   console.log(`wrote ${outPath}`)
 }

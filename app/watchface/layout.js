@@ -63,10 +63,10 @@ const RECT = {
 
 // Offsets within a stat card.
 const CARD_INSET = {
-  ICON: { dx: 10, dy: 10, w: 22, h: 22 },
+  ICON: { dx: 10, dy: 8, w: 26, h: 26 },
   // VALUE.dx leaves clear separation from the icon (icon right edge sits
-  // at dx 10 + w 22 = 32) instead of crowding it by ~4px.
-  VALUE: { dx: 40, dy: 8, w: 70, h: 26 },
+  // at dx 10 + w 26 = 36) instead of crowding it.
+  VALUE: { dx: 44, dy: 8, w: 66, h: 26 },
   LABEL: { dx: 10, dy: 36, w: 98, h: 18 },
   CHART: { dx: 10, dy: 60, w: 98, h: 20 },
 }
