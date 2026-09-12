@@ -6,7 +6,14 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { encodePNG } = require('./png.js')
-const { renderSupersampled, fillCircle, fillEllipse, fillCapsule, fillPoly } = require('./draw.js')
+const {
+  renderSupersampled,
+  fillCircle,
+  fillEllipse,
+  fillCapsule,
+  fillPoly,
+  fillPath,
+} = require('./draw.js')
 const { COLOR } = require('../app/watchface/tokens.js')
 
 // Icons are AUTHORED in a 0..44 coordinate space, but each one is RENDERED
@@ -28,12 +35,23 @@ function icon(name, outSize, draw) {
     // unit space (0..AUTHOR) -> supersampled pixels
     const u = (s * outSize) / AUTHOR
     const circle = (cx, cy, r, color) => fillCircle(big, cx * u, cy * u, r * u, color)
-    const ellipse = (cx, cy, rx, ry, color) =>
-      fillEllipse(big, cx * u, cy * u, rx * u, ry * u, color)
+    const ellipse = (cx, cy, rx, ry, color, angle) =>
+      fillEllipse(big, cx * u, cy * u, rx * u, ry * u, color, undefined, angle)
     const capsule = (x1, y1, x2, y2, thickness, color) =>
       fillCapsule(big, x1 * u, y1 * u, x2 * u, y2 * u, thickness * u, color)
     const poly = (points, color) => fillPoly(big, points.map(([x, y]) => [x * u, y * u]), color)
-    draw({ circle, ellipse, capsule, poly })
+    const path = (points, color) =>
+      fillPath(
+        big,
+        points.map((p) => ({
+          x: p.x * u,
+          y: p.y * u,
+          cx: p.cx === undefined ? undefined : p.cx * u,
+          cy: p.cy === undefined ? undefined : p.cy * u,
+        })),
+        color
+      )
+    draw({ circle, ellipse, capsule, poly, path })
   })
   return { name, size: outSize, buffer: canvas.toBuffer() }
 }
@@ -48,63 +66,87 @@ const weather = icon('ic-weather', SIZE_WEATHER, ({ circle, capsule }) => {
   circle(31, 20.5, 7, CLOUD)
 })
 
-// A footprint: one large rounded sole plus a row of toe circles above it -
-// reads more clearly than a shoe at this size.
-const steps = icon('ic-steps', SIZE_CARD, ({ ellipse, circle }) => {
-  ellipse(23, 30, 10, 13, COLOR.MINT)
-  circle(11.5, 15, 3.1, COLOR.MINT)
-  circle(18, 10.5, 3.6, COLOR.MINT)
-  circle(25, 9.5, 3.8, COLOR.MINT)
-  circle(31.5, 12, 3.3, COLOR.MINT)
-  circle(36, 17.5, 2.8, COLOR.MINT)
+// A footprint. The sole is ONE continuous outline, not a pad plus a heel:
+// wide at the ball, pinched at the arch, rounded at the heel. Two separate
+// blobs read as two blobs at 26px - the pinch is what says "foot". The
+// outer (left) edge stays convex and the inner edge concave, which is the
+// asymmetry the eye actually uses to recognise the shape.
+const steps = icon('ic-steps', SIZE_CARD, ({ circle, path }) => {
+  path(
+    [
+      { x: 12, y: 19, cx: 7, cy: 27 }, // closing segment: convex outer edge
+      { x: 22, y: 15, cx: 16, cy: 12 }, // over the ball of the foot
+      { x: 29, y: 22, cx: 30, cy: 16 },
+      { x: 26, y: 31, cx: 24.5, cy: 26 }, // arch, pinched inward
+      { x: 24, y: 41, cx: 31, cy: 38 }, // heel
+      { x: 16, y: 33, cx: 16, cy: 41 },
+    ],
+    COLOR.MINT
+  )
+  // Four toes arcing over the ball - fewer and larger than a literal five,
+  // which at this size would merge into a single bar.
+  circle(9.5, 11.5, 3.2, COLOR.MINT)
+  circle(17, 7, 3.0, COLOR.MINT)
+  circle(23.5, 6.5, 2.7, COLOR.MINT)
+  circle(29, 9, 2.4, COLOR.MINT)
 })
 
-// A heart: two overlapping circles for the lobes plus a downward triangle
-// for the point, smoothed by the circles covering the triangle's top edge.
-const heart = icon('ic-heart', SIZE_CARD, ({ poly, circle }) => {
-  poly(
+// A heart with a real notch at the top and a real point at the bottom.
+// The lobes are curve segments rather than two pasted circles, so the
+// silhouette narrows towards the point instead of staying round-bottomed.
+const heart = icon('ic-heart', SIZE_CARD, ({ path }) => {
+  path(
     [
-      [7, 19],
-      [37, 19],
-      [22, 38],
+      { x: 22, y: 13, cx: 18, cy: 5 }, // closing segment dips into the notch
+      { x: 34, y: 6, cx: 26, cy: 4 },
+      { x: 39, y: 20, cx: 42, cy: 11 },
+      { x: 22, y: 39, cx: 34, cy: 31 },
+      { x: 5, y: 20, cx: 10, cy: 31 },
+      { x: 10, y: 6, cx: 2, cy: 11 },
     ],
     COLOR.CORAL
   )
-  circle(16, 17, 9, COLOR.CORAL)
-  circle(28, 17, 9, COLOR.CORAL)
 })
 
-// A rounded teardrop: a wide round base (an ellipse) plus a tapering tip
-// that leans to one side (a polygon licking up and over), the same colour
-// so the two shapes read as one continuous flame.
-const flame = icon('ic-flame', SIZE_CARD, ({ ellipse, poly }) => {
-  ellipse(22, 29, 8.5, 10, COLOR.AMBER)
-  poly(
+// A flame. The previous version was an ellipse and a polygon fighting each
+// other, which read as a leaf. This is one continuous silhouette: a wide
+// round base and a narrow tip leaning right off a kicked-in left shoulder.
+// The wide base against the narrow lean is what separates "fire" from "leaf".
+const flame = icon('ic-flame', SIZE_CARD, ({ path }) => {
+  path(
     [
-      [26, 6],
-      [30, 14],
-      [29.8, 25],
-      [14.2, 25],
-      [17, 15],
+      { x: 27, y: 3, cx: 21, cy: 11 }, // sharp tip, leaning right
+      { x: 36, y: 26, cx: 35, cy: 12 }, // right edge, convex and full
+      { x: 22, y: 41, cx: 35, cy: 38 }, // wide round base
+      { x: 8, y: 27, cx: 9, cy: 38 },
+      { x: 13, y: 14, cx: 6, cy: 19 }, // left lobe: the licking tongue
+      { x: 20, y: 19, cx: 16, cy: 20 }, // valley between tongue and tip
     ],
     COLOR.AMBER
   )
 })
 
-// A running figure: head, torso, and angled limbs built from capsules in a
-// forward-leaning stride.
+// A running figure. The head is deliberately detached from the shoulders -
+// standard for a running pictogram, and the only way the head survives as a
+// head once a 44-unit drawing is rasterised at 35px. Limbs are thinner than
+// before and the stride is wider, so arms stop merging into the torso.
 const runner = icon('ic-runner', SIZE_PILL, ({ circle, capsule }) => {
-  circle(27, 10, 4.6, COLOR.MINT)
-  capsule(25, 15, 18, 25, 6.5, COLOR.MINT)
-  // Arms.
-  capsule(23, 17, 14, 14, 4, COLOR.MINT)
-  capsule(23, 19, 30, 25, 4, COLOR.MINT)
-  // Front leg, bent and lifted.
-  capsule(19, 24, 12, 21, 5.2, COLOR.MINT)
-  capsule(12, 21, 7, 29, 4.2, COLOR.MINT)
-  // Back leg, extended behind.
-  capsule(20, 23, 29, 30, 5.2, COLOR.MINT)
-  capsule(29, 30, 35, 26, 4.2, COLOR.MINT)
+  const LIMB = 3.6
+  const SHIN = 3.2
+  circle(29.5, 7, 4.2, COLOR.MINT)
+  capsule(26, 17, 19.5, 27, 6, COLOR.MINT)
+  // Front arm, raised and bent forward.
+  capsule(25, 18, 16, 16, LIMB, COLOR.MINT)
+  capsule(16, 16, 12, 9, SHIN, COLOR.MINT)
+  // Back arm, swinging behind.
+  capsule(26, 20, 33, 25, LIMB, COLOR.MINT)
+  capsule(33, 25, 39, 22, SHIN, COLOR.MINT)
+  // Front leg, knee lifted.
+  capsule(20, 26, 11, 24, 4.2, COLOR.MINT)
+  capsule(11, 24, 6, 32, SHIN, COLOR.MINT)
+  // Back leg, extended behind and pushing off.
+  capsule(21, 27, 29, 33, 4.2, COLOR.MINT)
+  capsule(29, 33, 37, 30, SHIN, COLOR.MINT)
 })
 
 const icons = [weather, steps, heart, flame, runner]

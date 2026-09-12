@@ -98,16 +98,26 @@ function fillCircle(canvas, cx, cy, r, color, alpha) {
   }
 }
 
-function fillEllipse(canvas, cx, cy, rx, ry, color, alpha) {
+// `angle` (radians, clockwise on screen) tilts the ellipse about its centre.
+// Membership is tested by rotating the sample point back into the ellipse's
+// own frame rather than rotating the ellipse - same result, no resampling.
+function fillEllipse(canvas, cx, cy, rx, ry, color, alpha, angle = 0) {
   const { r: cr, g: cg, b: cb, a: ca } = toRGBA(color, alpha)
-  const x0 = Math.max(0, Math.floor(cx - rx))
-  const x1 = Math.min(canvas.width - 1, Math.ceil(cx + rx))
-  const y0 = Math.max(0, Math.floor(cy - ry))
-  const y1 = Math.min(canvas.height - 1, Math.ceil(cy + ry))
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  // Half-extents of the rotated ellipse's axis-aligned bounding box.
+  const exX = Math.hypot(rx * cos, ry * sin)
+  const exY = Math.hypot(rx * sin, ry * cos)
+  const x0 = Math.max(0, Math.floor(cx - exX))
+  const x1 = Math.min(canvas.width - 1, Math.ceil(cx + exX))
+  const y0 = Math.max(0, Math.floor(cy - exY))
+  const y1 = Math.min(canvas.height - 1, Math.ceil(cy + exY))
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
-      const nx = (x + 0.5 - cx) / rx
-      const ny = (y + 0.5 - cy) / ry
+      const dx = x + 0.5 - cx
+      const dy = y + 0.5 - cy
+      const nx = (dx * cos + dy * sin) / rx
+      const ny = (-dx * sin + dy * cos) / ry
       if (nx * nx + ny * ny <= 1) {
         canvas.set(x, y, cr, cg, cb, ca)
       }
@@ -172,6 +182,44 @@ function fillPoly(canvas, points, color, alpha) {
   }
 }
 
+// A closed outline whose edges may curve. Each point is {x, y} plus an
+// optional {cx, cy} control handle describing the quadratic curve ARRIVING
+// at that point from the previous one; a point with no handle is joined by
+// a straight line. The path always closes, so the first point's handle (if
+// any) shapes the final segment back from the last point.
+//
+// Curves are flattened into a dense polygon and handed to fillPoly, so
+// curved and straight outlines rasterise through exactly one code path.
+function samplePath(points) {
+  const out = []
+  for (let i = 0; i < points.length; i++) {
+    const from = points[(i - 1 + points.length) % points.length]
+    const to = points[i]
+    if (to.cx === undefined || to.cy === undefined) {
+      out.push([to.x, to.y])
+      continue
+    }
+    // Step count from the control-polygon length: long curves get more
+    // segments, short ones don't waste them.
+    const span =
+      Math.hypot(to.cx - from.x, to.cy - from.y) + Math.hypot(to.x - to.cx, to.y - to.cy)
+    const steps = Math.max(8, Math.min(64, Math.ceil(span / 2)))
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps
+      const mt = 1 - t
+      out.push([
+        mt * mt * from.x + 2 * mt * t * to.cx + t * t * to.x,
+        mt * mt * from.y + 2 * mt * t * to.cy + t * t * to.y,
+      ])
+    }
+  }
+  return out
+}
+
+function fillPath(canvas, points, color, alpha) {
+  fillPoly(canvas, samplePath(points), color, alpha)
+}
+
 // Box-downsample a canvas by an integer factor, premultiplying by alpha
 // before averaging so edge pixels next to fully-transparent ones don't
 // pick up leftover colour from the "outside".
@@ -231,6 +279,8 @@ module.exports = {
   fillEllipse,
   fillCapsule,
   fillPoly,
+  samplePath,
+  fillPath,
   pointInPolygon,
   downsample,
   renderSupersampled,
