@@ -1,0 +1,36 @@
+{
+  "configVersion": "v2",
+  "app": {
+    "appId": 30001,
+    "appName": "Horizon",
+    "appType": "watchface",
+    "version": { "code": 1, "name": "1.0.0" },
+    "icon": "icon.png",
+    "vender": "duynnguyen22",
+    "description": "Landscape watch face for Amazfit Active 2 Round"
+  },
+  "permissions": [],
+  "runtime": {
+    "apiVersion": { "compatible": "2.0.0", "target": "2.0.0", "minVersion": "2.0.0" }
+  },
+  "targets": {
+    "active-2-round": {
+      "module": {
+        "watchface": { "path": "watchface/index", "main": 1, "editable": 0, "lockscreen": 0 }
+      },
+      "platforms": [
+        { "name": "active-2-round", "deviceSource": 8913152 },
+        { "name": "active-2-round", "deviceSource": 8913153 },
+        { "name": "active-2-round", "deviceSource": 8913155 },
+        { "name": "active-2-round", "deviceSource": 8913159 },
+        { "name": "active-2-round", "deviceSource": 10092800 },
+        { "name": "active-2-round", "deviceSource": 10092801 },
+        { "name": "active-2-round", "deviceSource": 10092803 },
+        { "name": "active-2-round", "deviceSource": 10092807 }
+      ],
+      "designWidth": 466
+    }
+  },
+  "i18n": { "en-US": { "appName": "Horizon" } },
+  "defaultLanguage": "en-US"
+}
