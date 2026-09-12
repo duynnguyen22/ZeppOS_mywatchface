@@ -5,6 +5,7 @@
   "description": "Amazfit Active 2 (Round) watch face",
   "scripts": {
     "test": "node --test 'test/**/*.test.js'",
-    "background": "node tools/make-background.js"
+    "background": "node tools/make-background.js",
+    "icon": "node tools/make-icon.js"
   }
 }
