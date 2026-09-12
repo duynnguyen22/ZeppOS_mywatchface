@@ -10,6 +10,7 @@ import * as format from './format.js'
 // Namespace import, not a named one: these modules are CommonJS and
 // rollup cannot statically see their named exports.
 import * as scene from './scene.js'
+import * as sensors from './sensors.js'
 
 const { COLOR } = tokens
 const { RECT } = layout
@@ -25,6 +26,7 @@ const { RECT } = layout
 // black screen. Destructuring is the access pattern the rest of this file
 // already uses for the other CommonJS modules.
 const { createScene } = scene
+const { readHeartRate } = sensors
 const SCENE_ENV = Object.assign({}, tokens, layout, gauge, digits, format)
 
 // This is the ONLY file that touches the Zepp platform. Everything about
@@ -85,9 +87,9 @@ WatchFace({
     const step = makeSensor(Step)
     const calorie = makeSensor(Calorie)
 
-    // HeartRate is a documented class on this API level and was verified
-    // reporting on the simulator, so it is constructed like the rest rather
-    // than probed the way the old Stress sensor had to be. Until it has a
+    // Read through readHeartRate(), never with getCurrent() directly: see
+    // sensors.js for why getCurrent() reads 0 all day on real hardware
+    // while the simulator answers it happily. Until the sensor has a
     // reading - the optical sensor samples on its own schedule, not ours -
     // the dial stays empty and the value shows '--'. It is never filled in
     // from another metric.
@@ -101,7 +103,7 @@ WatchFace({
         day: time.getDate(),
         battery: read(battery),
         steps: read(step),
-        hr: read(heart),
+        hr: readHeartRate(heart),
         kcal: read(calorie),
         stepGoal: readStepGoal(step),
       }
@@ -204,6 +206,21 @@ WatchFace({
     })
 
     time.onPerMinute(refresh)
+
+    // A new heart-rate measurement lands on the sensor's schedule, not on
+    // our 30-second tick, so the face asks to be told. Registered once
+    // alongside the minute tick, and guarded: the event is API level 2.1
+    // and this face declares 2.0, so on older firmware the subscription
+    // simply is not there and the poll above covers it. Deliberately NOT
+    // onCurrentChange - that one starts a continuous measurement and would
+    // keep the optical sensor running down the battery.
+    if (heart && typeof heart.onLastChange === 'function') {
+      try {
+        heart.onLastChange(refresh)
+      } catch (e) {
+        // Firmware without the event; the poll keeps the value fresh.
+      }
+    }
   },
 
   onInit() {},

@@ -50,6 +50,32 @@ new Distance().getCurrent()
 new Weather().getForecast()     // { cityName, tideData, forecastData: { count, data } }
 ```
 
+### `HeartRate.getCurrent()` lies on the simulator
+
+This one cost a device install to find: the simulator answers **every**
+`HeartRate` getter from its sensor panel, so `getCurrent()` returned a
+healthy 75 on the desk. On real hardware the same call returns **0 all
+day**. The docs say why — `getCurrent()` "needs to be used in the
+`onCurrentChange` callback function": it reports a *continuous measurement
+in progress*, and a watch face never starts one.
+
+| Method | What it actually is | Use in a face? |
+|---|---|---|
+| `getCurrent()` | value of an in-progress continuous measurement | **no** — 0 unless `onCurrentChange` is running |
+| `getLast()` | last single / background-monitoring measurement | **yes** |
+| `onLastChange(cb)` | a new single measurement landed (API 2.1+) | yes, to refresh promptly |
+| `onCurrentChange(cb)` | starts continuous measurement (API 2.1+) | no — keeps the optical sensor on |
+| `getToday()` | up to 1440 minute samples for today | for charts |
+| `getResting()` | resting heart rate (API 3.0+) | above this face's target level |
+
+A reading of `0` means "no reading", not a heart rate of zero. See
+`app/watchface/sensors.js`.
+
+**General lesson:** the simulator models sensors as a value panel, not as
+hardware with a duty cycle. Any getter whose real behaviour depends on a
+measurement session being active will read plausibly on the simulator and
+flat on the watch.
+
 `Time` instance methods: `getHours() getMinutes() getSeconds() getDay()
 getDate() getMonth() getFullYear() getHourFormat() onPerMinute() offPerMinute()`
 

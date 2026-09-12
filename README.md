@@ -330,6 +330,32 @@ fails the same silent way as the API mismatch above — which is why every
 sensor here is constructed and read inside a `try`, and a failure renders
 `--` rather than taking the face down.
 
+## Heart rate: `getLast()`, never `getCurrent()`
+
+`HeartRate.getCurrent()` is documented as needing "to be used in the
+`onCurrentChange` callback function" — it reports a **continuous
+measurement in progress**, which a watch face never starts. On the watch
+it therefore reads `0` all day. The simulator does not model the
+distinction and answers `getCurrent()` from its sensor panel, so a face
+built on it passes every check on the desk and shows `0` on the wrist.
+
+`app/watchface/sensors.js` reads `getLast()` — the most recent single or
+background-monitoring measurement — and treats `0` as *no reading*, so the
+face shows `--` and an empty dial rather than a heart rate of zero. It
+falls back to `getCurrent()` only when that is the only positive value,
+which keeps the simulator usable and, on the watch, means a measurement
+genuinely is running.
+
+`onLastChange` (API level 2.1) pushes a fresh reading as soon as one
+lands; the 30-second poll covers firmware that lacks it.
+`onCurrentChange` is deliberately **not** used — it would start a
+continuous measurement and keep the optical sensor running down the
+battery.
+
+If the dial still reads `--` on a real watch, check that heart-rate
+monitoring is actually switched on in the watch's own health settings.
+Nothing the face does can make the sensor sample on its own.
+
 ## A note on `hmUI.show_level.ONAL_AOD`
 
 `app/watchface/index.js` uses `hmUI.show_level.ONLY_NORMAL |
