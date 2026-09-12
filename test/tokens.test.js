@@ -29,7 +29,7 @@ test('the palette stays tiny', () => {
 test('there is exactly ONE chromatic accent; everything else is neutral', () => {
   // A neutral has all three channels within a few points of each other.
   // This is the test that catches "just one more colour" - a green or
-  // amber slipped into the palette fails here, which is the point.
+  // blue slipped into the palette fails here, which is the point.
   const chroma = (c) => {
     const r = (c >> 16) & 255
     const g = (c >> 8) & 255
@@ -44,10 +44,10 @@ test('there is exactly ONE chromatic accent; everything else is neutral', () => 
   )
 })
 
-test('the accent is the cool blue the guideline specifies', () => {
+test('the accent is the warm gold the guideline specifies', () => {
   const b = COLOR.ACCENT & 255
   const r = (COLOR.ACCENT >> 16) & 255
-  assert.ok(b > r, 'the accent must read blue, not warm')
+  assert.ok(r > b, 'the accent must read warm gold, not cool')
 })
 
 test('hour and minute colours differ so the time reads two-tone', () => {

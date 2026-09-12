@@ -9,7 +9,7 @@ on ring gauges, wrapped in sparse technical chrome.
 The design brief is deliberately restrictive, and the code enforces the
 parts of it that are enforceable:
 
-- **One accent colour.** Black, white, one cool grey, one blue. A test
+- **One accent colour.** Black, white, one neutral grey, one gold. A test
   fails if any second chromatic hue enters the palette.
 - **A 20-25px safe area**, not merely "not clipped by the bezel".
 - **No invented data.** A sensor with no reading renders `--` and an empty

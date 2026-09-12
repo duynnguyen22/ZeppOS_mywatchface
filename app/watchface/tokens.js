@@ -1,16 +1,16 @@
 // Design tokens. Pure data - no Zepp API - so this is unit testable.
 //
-// The palette is deliberately tiny: black, white, one cool grey, one
+// The palette is deliberately tiny: black, white, one neutral grey, one
 // accent. The implementation guideline is explicit that a second accent
-// hue is a defect, not a feature, so there is no green/amber/coral here
+// hue is a defect, not a feature, so there is no green/blue/coral here
 // and nothing should add one.
 
 const COLOR = {
   BG: 0x000000, // AMOLED black - unlit pixels
   WHITE: 0xffffff, // the time, and each metric's value
-  SECONDARY: 0xa7afba, // labels, date, technical markings
-  ACCENT: 0x35bfff, // the ONE accent: minute digits, arcs, icons
-  CHROME: 0x252a30, // outer ring, ticks, unfilled gauge tracks
+  SECONDARY: 0xb3b0aa, // labels, date, technical markings
+  ACCENT: 0xe8cf9a, // the ONE accent: champagne gold - minute digits, arcs, icons
+  CHROME: 0x2b2722, // outer ring, ticks, unfilled gauge tracks
 }
 
 const TYPE = {
