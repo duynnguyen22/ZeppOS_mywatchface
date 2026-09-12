@@ -16,7 +16,7 @@ const path = require('node:path')
 const { encodePNG } = require('./png.js')
 const {
   Canvas, renderSupersampled, fillRoundRect, eraseRoundRect, fillCircle,
-  fillPoly, boxBlur, compositeOver,
+  fillPoly, fillArc, boxBlur, compositeOver,
 } = require('./draw.js')
 const { COLOR } = require('../app/watchface/tokens.js')
 
@@ -48,59 +48,85 @@ const BOT = H - HB // top of the lower bowl
 // Each entry draws into a pen whose coordinates are the glyph's own box.
 // `ring` is a closed rounded-rect outline; `bar` a square-cornered slab;
 // `cut` erases; `stroke` is a thick straight line with flat ends.
+// Corner radii. A bowl is only 45 tall, so its corners cannot use the
+// full-height radius without the shape inverting.
+const R_BOWL = 20
+
+// Every glyph is a UNION of bars, quarter-ring corners, closed rings and
+// straight strokes. Nothing here erases anything: cutting an opening
+// across a rounded ring is what left slivers on the old 2/3/5/6/9, and
+// the shapes that always rendered correctly (0, 1, 4, 7, 8) were exactly
+// the ones that never cut.
 const GLYPH = {
   '0': (p, w) => {
     p.ring(0, 0, w, H, R)
   },
   '1': (p, w) => {
     p.bar(w - S, 0, S, H)
-    // A polygon here collapses: measured perpendicular to a steep diagonal
-    // its thickness is a fraction of its vertical extent. stroke() sets the
-    // weight perpendicular to the run, which is what the flag needs.
+    // stroke(), not poly(): measured perpendicular to a steep diagonal a
+    // polygon's thickness collapses to a fraction of its vertical extent.
     p.stroke(w - S / 2, S * 0.45, 0.5, S * 2.1, S * 0.92)
   },
+  // Top bowl open at the lower left, a diagonal down to a full base.
   '2': (p) => {
-    p.ring(0, 0, W, HB, R)
-    p.cutR(-2 * S, S * 0.75, 3 * S, HB, S * 0.9) // scoop the left flank away
-    p.cut(0, HB - S, W - S, S) // drop the bowl's floor, keep the right stem
-    p.stroke(W - S / 2, HB - S * 1.2, S / 2 + 2, H - S, S)
+    p.corner(R_BOWL, R_BOWL, R_BOWL, 'tl')
+    p.bar(R_BOWL, 0, W - 2 * R_BOWL, S)
+    p.corner(W - R_BOWL, R_BOWL, R_BOWL, 'tr')
+    p.bar(W - S, R_BOWL, S, HB - R_BOWL - S)
+    p.stroke(W - S / 2, HB - S * 1.4, S * 0.7, H - S, S)
     p.bar(0, H - S, W, S)
   },
+  // Two bowls open down the left. The waist is deliberately SHORT and
+  // inset: with all three bars the same length a 3 reads as a mirrored E.
   '3': (p) => {
-    p.ring(0, 0, W, HB, R)
-    p.ring(0, BOT, W, HB, R)
-    // One scoop through both bowls: a 3 is open down its whole left side
-    // apart from the top and bottom shoulders.
-    p.cutR(-2 * S, S * 0.75, 3 * S, H - 2 * S * 0.75, S * 0.9)
+    p.bar(0, 0, W - R_BOWL, S)
+    p.corner(W - R_BOWL, R_BOWL, R_BOWL, 'tr')
+    p.bar(W - S, R_BOWL, S, HB - 2 * R_BOWL)
+    p.corner(W - R_BOWL, HB - R_BOWL, R_BOWL, 'br')
+    p.bar(W * 0.34, HB - S, W - R_BOWL - W * 0.34, S)
+    p.corner(W - R_BOWL, BOT + R_BOWL, R_BOWL, 'tr')
+    p.bar(W - S, BOT + R_BOWL, S, H - BOT - 2 * R_BOWL)
+    p.corner(W - R_BOWL, H - R_BOWL, R_BOWL, 'br')
+    p.bar(0, H - S, W - R_BOWL, S)
   },
   '4': (p) => {
     p.bar(W - S * 2.3, 0, S, H)
     p.bar(0, HB - S, W, S)
     p.poly([[W - S * 2.3, 0], [W - S * 2.3, S * 1.1], [S * 1.2, HB - S], [0, HB - S]])
   },
+  // Top bar, upper-left flank, waist, then a bowl open at the upper left.
   '5': (p) => {
-    p.ring(0, BOT, W, HB, R)
-    p.cutR(-2 * S, BOT + S * 0.75, 3 * S, HB, S * 0.9) // open the lower left
-    p.bar(0, 0, W, S) // top bar
-    p.bar(0, 0, S, HB - S * 0.5) // upper-left flank
+    p.bar(0, 0, W, S)
+    p.bar(0, 0, S, HB - S)
+    p.bar(0, HB - S, W - R_BOWL, S)
+    p.corner(W - R_BOWL, BOT + R_BOWL, R_BOWL, 'tr')
+    p.bar(W - S, BOT + R_BOWL, S, H - BOT - 2 * R_BOWL)
+    p.corner(W - R_BOWL, H - R_BOWL, R_BOWL, 'br')
+    p.bar(0, H - S, W - R_BOWL, S)
   },
+  // A closed lower bowl - the proven ring - plus a flank rising to a
+  // partial top bar.
   '6': (p) => {
-    p.ring(0, BOT, W, HB, R)
-    p.bar(0, R, S, BOT) // left flank rising to the top curve
-    p.arcCorner(0, 0, W, HB, R, 'tl') // the top bar and its left curve
+    p.ring(0, BOT, W, HB, R_BOWL)
+    p.bar(0, R_BOWL, S, BOT - R_BOWL + S)
+    p.corner(R_BOWL, R_BOWL, R_BOWL, 'tl')
+    p.bar(R_BOWL, 0, W * 0.5, S)
   },
   '7': (p) => {
     p.bar(0, 0, W, S)
     p.poly([[W - S, S], [W, S], [S * 1.5, H], [0, H]])
   },
   '8': (p) => {
-    p.ring(0, 0, W, HB, R)
-    p.ring(0, BOT, W, HB, R)
+    p.ring(0, 0, W, HB, R_BOWL)
+    p.ring(0, BOT, W, HB, R_BOWL)
   },
+  // A closed upper bowl plus a flank falling to a partial base - a 6
+  // turned through 180 degrees.
   '9': (p) => {
-    p.ring(0, 0, W, HB, R)
-    p.bar(W - S, HB - S, S, H - HB) // right flank falling to the base
-    p.arcCorner(0, BOT, W, HB, R, 'br') // the base and its right curve
+    p.ring(0, 0, W, HB, R_BOWL)
+    p.bar(W - S, HB - S, S, H - HB - R_BOWL + S)
+    p.corner(W - R_BOWL, H - R_BOWL, R_BOWL, 'br')
+    p.bar(W * 0.5 - S, H - S, W * 0.5 - R_BOWL + S, S)
   },
   ':': (p, w) => {
     p.bar(0, H * 0.31, w, w)
@@ -142,6 +168,17 @@ function renderGlyph(char, topColor, bottomColor) {
         eraseRoundRect(
           big, (x + S) * s, (y + S) * s, (rw - 2 * S) * s, (rh - 2 * S) * s,
           Math.max(r - S, 4) * s
+        )
+      },
+      // A quarter-ring corner of stroke weight S. This is what replaces the
+      // boolean cuts: a corner drawn directly can never leave the slivers
+      // that erasing across a rounded ring did.
+      // `q` is 'tl' | 'tr' | 'br' | 'bl'; (cx, cy) is the corner's centre.
+      corner: (cx, cy, radius, q) => {
+        const from = { tl: 270, tr: 0, br: 90, bl: 180 }[q]
+        fillArc(
+          big, cx * s, cy * s, (radius - S) * s, radius * s,
+          from, from + 90, 0xffffff, undefined, false
         )
       },
       // A thick straight line with flat ends - the diagonal of a 2 or 7.
