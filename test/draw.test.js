@@ -7,6 +7,11 @@ const {
   fillCapsule,
   fillPoly,
   fillPath,
+  fillArc,
+  boxBlur,
+  compositeOver,
+  fillRoundRect,
+  eraseRoundRect,
   downsample,
   renderSupersampled,
 } = require('../tools/draw.js')
@@ -227,4 +232,146 @@ test('fillPath closes the path automatically, wrapping the last point to the fir
   // Three points, no explicit closing segment.
   fillPath(c, [{ x: 5, y: 5 }, { x: 25, y: 5 }, { x: 15, y: 25 }], 0xff0000)
   assert.strictEqual(alphaAt(c, 15, 10), 255, 'interior is filled, so the outline closed')
+})
+
+// --- Arcs -------------------------------------------------------------
+// Angles are degrees CLOCKWISE FROM 12 O'CLOCK, matching layout.polar() so
+// the generator and the layout table speak the same coordinate language.
+// An arc is a ring band: filled between rInner and rOuter, swept from
+// startDeg to endDeg going clockwise.
+
+// Point at `deg` clockwise from 12, `dist` from (cx,cy) - the same mapping
+// layout.polar() uses, restated here so the test does not depend on it.
+function at(cx, cy, deg, dist) {
+  const rad = ((deg - 90) * Math.PI) / 180
+  return [Math.round(cx + dist * Math.cos(rad)), Math.round(cy + dist * Math.sin(rad))]
+}
+
+test('an arc fills the ring band inside its swept angles', () => {
+  const c = new Canvas(100, 100)
+  fillArc(c, 50, 50, 15, 25, 45, 135, 0x00ff00)
+  assert.strictEqual(alphaAt(c, ...at(50, 50, 90, 20)), 255, '3 o clock, mid-band')
+})
+
+test('an arc leaves its hole empty', () => {
+  const c = new Canvas(100, 100)
+  fillArc(c, 50, 50, 15, 25, 45, 135, 0x00ff00)
+  assert.strictEqual(alphaAt(c, ...at(50, 50, 90, 8)), 0, 'inside rInner')
+  assert.strictEqual(alphaAt(c, ...at(50, 50, 90, 32)), 0, 'outside rOuter')
+})
+
+test('an arc leaves angles outside its sweep empty', () => {
+  const c = new Canvas(100, 100)
+  fillArc(c, 50, 50, 15, 25, 45, 135, 0x00ff00)
+  assert.strictEqual(alphaAt(c, ...at(50, 50, 270, 20)), 0, '9 o clock, opposite the sweep')
+  assert.strictEqual(alphaAt(c, ...at(50, 50, 0, 20)), 0, '12 o clock, before the sweep')
+})
+
+test('an arc sweeping through 12 o clock wraps instead of inverting', () => {
+  const c = new Canvas(100, 100)
+  fillArc(c, 50, 50, 15, 25, 315, 45, 0x00ff00)
+  assert.strictEqual(alphaAt(c, ...at(50, 50, 0, 20)), 255, '12 o clock is inside the wrap')
+  assert.strictEqual(alphaAt(c, ...at(50, 50, 180, 20)), 0, '6 o clock is outside it')
+})
+
+test('a zero-length sweep draws nothing', () => {
+  const c = new Canvas(100, 100)
+  fillArc(c, 50, 50, 15, 25, 90, 90, 0x00ff00)
+  assert.strictEqual(alphaAt(c, ...at(50, 50, 90, 20)), 0)
+})
+
+test('round caps extend an arc past its end angle; square ends do not', () => {
+  const square = new Canvas(100, 100)
+  const round = new Canvas(100, 100)
+  fillArc(square, 50, 50, 15, 25, 45, 135, 0x00ff00)
+  fillArc(round, 50, 50, 15, 25, 45, 135, 0x00ff00, undefined, true)
+  const justPast = at(50, 50, 139, 20)
+  assert.strictEqual(alphaAt(square, ...justPast), 0, 'hard radial edge at the end angle')
+  assert.strictEqual(alphaAt(round, ...justPast), 255, 'cap bulges past it')
+})
+
+// --- Glow -------------------------------------------------------------
+// The blue elements in the design bloom. That is a blurred copy of the
+// shape composited underneath the crisp one, so blur and composite are
+// separate primitives rather than one baked-in "glow" call.
+
+test('boxBlur spreads alpha outside the original hard edge', () => {
+  const c = new Canvas(60, 60)
+  fillCircle(c, 30, 30, 8, 0x00ff00)
+  assert.strictEqual(alphaAt(c, 30, 18), 0, 'precondition: 12px out is empty')
+  const blurred = boxBlur(c, 4)
+  assert.ok(alphaAt(blurred, 30, 18) > 0, 'blur reaches past the edge')
+  assert.ok(alphaAt(blurred, 30, 30) > 0, 'centre survives the blur')
+})
+
+test('boxBlur softens the edge rather than keeping it binary', () => {
+  const c = new Canvas(60, 60)
+  fillCircle(c, 30, 30, 8, 0x00ff00)
+  const blurred = boxBlur(c, 4)
+  const edge = alphaAt(blurred, 30, 22)
+  assert.ok(edge > 0 && edge < 255, `expected a partial alpha at the edge, got ${edge}`)
+})
+
+test('boxBlur of an empty canvas stays empty', () => {
+  const blurred = boxBlur(new Canvas(20, 20), 3)
+  assert.strictEqual(alphaAt(blurred, 10, 10), 0)
+})
+
+test('compositeOver at zero strength leaves the destination untouched', () => {
+  const dst = new Canvas(20, 20)
+  const src = new Canvas(20, 20)
+  fillCircle(src, 10, 10, 5, 0xff0000)
+  compositeOver(dst, src, 0)
+  assert.strictEqual(alphaAt(dst, 10, 10), 0)
+})
+
+test('compositeOver at partial strength lays the source over the destination', () => {
+  const dst = new Canvas(20, 20)
+  const src = new Canvas(20, 20)
+  fillCircle(src, 10, 10, 5, 0xff0000)
+  compositeOver(dst, src, 0.5)
+  const a = alphaAt(dst, 10, 10)
+  assert.ok(a > 100 && a < 160, `expected roughly half alpha, got ${a}`)
+})
+
+// --- Rounded rectangles and erasing -----------------------------------
+// The digit font is built from rounded-rect rings: fill the outer shape,
+// then punch the counter out of the middle. Punching needs real erasing -
+// source-over compositing can only add.
+
+test('fillRoundRect fills its middle and its straight edges', () => {
+  const c = new Canvas(60, 60)
+  fillRoundRect(c, 10, 10, 40, 40, 10, 0xff0000)
+  assert.strictEqual(alphaAt(c, 30, 30), 255, 'centre')
+  assert.strictEqual(alphaAt(c, 30, 11), 255, 'top edge, away from corners')
+  assert.strictEqual(alphaAt(c, 11, 30), 255, 'left edge')
+})
+
+test('fillRoundRect rounds its corners away', () => {
+  const c = new Canvas(60, 60)
+  fillRoundRect(c, 10, 10, 40, 40, 10, 0xff0000)
+  assert.strictEqual(alphaAt(c, 11, 11), 0, 'top-left corner is cut by the radius')
+  assert.strictEqual(alphaAt(c, 48, 48), 0, 'bottom-right corner too')
+})
+
+test('a zero radius makes fillRoundRect a plain rectangle', () => {
+  const c = new Canvas(60, 60)
+  fillRoundRect(c, 10, 10, 40, 40, 0, 0xff0000)
+  assert.strictEqual(alphaAt(c, 10, 10), 255, 'square corner is filled')
+})
+
+test('eraseRoundRect punches a hole back to fully transparent', () => {
+  const c = new Canvas(60, 60)
+  fillRoundRect(c, 5, 5, 50, 50, 8, 0xff0000)
+  assert.strictEqual(alphaAt(c, 30, 30), 255, 'precondition: filled')
+  eraseRoundRect(c, 20, 20, 20, 20, 5)
+  assert.strictEqual(alphaAt(c, 30, 30), 0, 'hole is transparent, not black')
+  assert.strictEqual(alphaAt(c, 10, 30), 255, 'the ring around it survives')
+})
+
+test('eraseRoundRect leaves the erased corners filled, matching its radius', () => {
+  const c = new Canvas(60, 60)
+  fillRoundRect(c, 5, 5, 50, 50, 0, 0xff0000)
+  eraseRoundRect(c, 20, 20, 20, 20, 8)
+  assert.strictEqual(alphaAt(c, 21, 21), 255, 'rounded hole does not reach its own corner')
 })

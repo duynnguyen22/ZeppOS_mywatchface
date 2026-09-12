@@ -10,6 +10,9 @@
     "icons": "node tools/make-icons.js",
     "build": "cd app && zeus build",
     "dev": "cd app && zeus dev",
-    "preview": "cd app && zeus preview"
+    "preview": "cd app && zeus preview",
+    "digits": "node tools/make-digits.js",
+    "arcs": "node tools/make-arcs.js",
+    "assets": "npm run background && npm run icon && npm run icons && npm run digits && npm run arcs"
   }
 }

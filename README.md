@@ -1,9 +1,19 @@
 # Horizon — Amazfit Active 2 (Round) Watch Face
 
 A custom Zepp OS watch face for the **Amazfit Active 2, Round variant**,
-implementing the design in [`reference.png`](./reference.png): a dark teal
-mountain/lake scene, a two-tone digital clock, weather, battery, three
-stat cards (steps, heart rate, calories), and an activity summary pill.
+implementing the design in [`reference-new.png`](./reference-new.png): a
+black AMOLED face with a battery arc, a large two-tone digital clock in a
+generated squared typeface, and three metrics (steps, stress, calories)
+on ring gauges, wrapped in sparse technical chrome.
+
+The design brief is deliberately restrictive, and the code enforces the
+parts of it that are enforceable:
+
+- **One accent colour.** Black, white, one cool grey, one blue. A test
+  fails if any second chromatic hue enters the palette.
+- **A 20-25px safe area**, not merely "not clipped by the bezel".
+- **No invented data.** A sensor with no reading renders `--` and an empty
+  gauge. The stress dial in particular never falls back to heart rate.
 
 | | |
 |---|---|
@@ -55,21 +65,31 @@ app/                     the actual Zepp OS app (this is zeus's project root)
   app.js                 app-level lifecycle (minimal; watch face logic lives below)
   watchface/
     index.js             the only file that touches the Zepp platform (@zos/* modules)
+    scene.js              builds the whole face as drawing descriptors (pure)
     tokens.js             colour + typography constants (pure data)
-    layout.js             screen geometry, polar(), fitsOnFace(), element rects
+    layout.js             screen geometry, polar(), fitsOnFace(), arcBox(), rects
+    gauge.js              ratio -> sprite frame / lit dash count (pure)
+    digits.js             kerning for the generated time glyphs (pure)
     format.js              display-string formatting (pure functions)
   assets/active-2-round/
     icon.png               app icon
-    images/bg.png           generated background artwork
+    images/bg.png           generated static chrome
+    images/d[wb]-*.png      generated time glyphs, white and accent sets
+    images/arc-*.png        generated gauge fill frames
+    images/ic-*.png         generated metric glyphs
   dist/                    zeus build output (.zab packages) — gitignored
 
 test/                    unit tests (Node's built-in test runner) — NOT inside app/
 tools/                   asset-generating build scripts — NOT inside app/
-  make-background.js      generates assets/active-2-round/images/bg.png
-  make-icon.js             generates assets/active-2-round/icon.png
+  make-background.js      generates the static chrome, images/bg.png
+  make-icon.js             generates the app icon
+  make-icons.js            generates the three metric glyphs
+  make-digits.js           generates the time glyph set (0-9 and the colon)
+  make-arcs.js             generates the gauge fill frames
+  draw.js                  shapes: arcs, paths, rounded rects, blur, erase
   png.js                   shared zlib-only PNG encoder
 
-reference.png            the design mockup this face implements
+reference-new.png        the design mockup this face implements
 docs/                    spec and planning artifacts from the build process
 ```
 
@@ -99,8 +119,12 @@ All commands run from the repo root via `npm`.
 | `npm run build` | `cd app && zeus build` — produces an installable `.zab` package under `app/dist/`. |
 | `npm run dev` | `cd app && zeus dev` — starts the Zepp OS Simulator dev server. |
 | `npm run preview` | `cd app && zeus preview` — generates a QR code to install on a real watch via the Zepp app. |
-| `npm run background` | `node tools/make-background.js` — regenerates `app/assets/active-2-round/images/bg.png`. |
-| `npm run icon` | `node tools/make-icon.js` — regenerates `app/assets/active-2-round/icon.png`. |
+| `npm run assets` | Regenerates **every** generated asset (chrome, app icon, metric glyphs, time glyphs, arc frames). Deterministic: re-running produces byte-identical files. |
+| `npm run background` | Regenerates the static chrome, `images/bg.png`. |
+| `npm run icon` | Regenerates the app icon. |
+| `npm run icons` | Regenerates the three metric glyphs. |
+| `npm run digits` | Regenerates the time glyph set. |
+| `npm run arcs` | Regenerates the gauge fill frames. |
 
 `zeus build`/`dev`/`preview` are **zeus-cli** commands that must run with
 `app/` as the current directory — that's why the npm scripts `cd app`
@@ -135,99 +159,124 @@ only be checked by eyeballing it on a device. Here, everything that is
 pure geometry, tokens, or string formatting lives in dependency-free
 modules that run under bare Node:
 
-- `app/watchface/tokens.js` — colour and typography constants
+- `app/watchface/tokens.js` — colour, typography and goal constants
 - `app/watchface/layout.js` — screen geometry, `polar()`, `fitsOnFace()`,
-  and the table of element rectangles (position/size for every widget)
-- `app/watchface/format.js` — all display-string formatting (time, date,
-  battery, temperature, steps, heart rate, calories, distance)
+  `arcBox()`, and the table of element rectangles
+- `app/watchface/gauge.js` — a reading and a target become a sprite frame
+  index or a count of lit dashes
+- `app/watchface/digits.js` — kerning for the generated time glyphs
+- `app/watchface/format.js` — display-string formatting (time, date,
+  battery, steps, and any plain metric)
+- `app/watchface/scene.js` — composes all of the above into the full list
+  of drawing descriptors
 
-None of these three files import any `@zos/*` module, so
+`scene.js` is the useful one: because it is pure, the entire composition
+can be rendered off-device and inspected before anything is flashed, and
+the tests can assert things like "no element breaks the safe area" and
+"every image the face references exists on disk" without a simulator.
+
+None of these files import any `@zos/*` module, so
 `test/*.test.js` exercises them directly with `node --test`.
 
 `app/watchface/index.js` is the **only** file that touches the Zepp
 platform: it creates widgets with `hmUI.createWidget`, reads sensors, and
-wires the `resume_call`/`pause_call` timer lifecycle. Colours and text
-sizes come from `tokens.js`, and the base element rectangles come from
-`layout.js`'s `RECT`/`statCard()` — but not everything is sourced that
-way: some interior offsets (e.g. the pill's icon and text positions) and
-most `radius` values are hardcoded inline in `index.js`.
+wires the `resume_call`/`pause_call` timer lifecycle. It decides nothing
+about appearance — it walks the descriptor list from `scene.js`, creates a
+widget per entry, and on each tick pushes new values into the entries that
+carry a `key`. Adding an element means editing `scene.js`, not this file.
 
 `fitsOnFace()` (in `layout.js`) is the key correctness check: it takes an
 element's rectangle and validates every corner against the circular
 bezel (screen center + radius), which is the thing that catches
 round-screen clipping — a rectangle that would look fine on a square
 screen but has its corner cut off by the bezel on this round one. Every
-entry in the base `RECT` table is checked against it in the test suite
-(`test/layout.test.js`), at test time — not build time. Positions derived
-by arithmetic in `index.js` (card insets, chart bar positions, the pill
-interior offsets, the hour/minute split) are not covered by this check.
+entry in `RECT` is checked against it at test time, and so is every
+element `scene.js` emits — including the derived ones, such as each time
+glyph's kerned position. The one deliberate exception is the arc sprites,
+whose bounding boxes have transparent corners outside the safe area while
+their ink never is; those are checked by walking the swept arc instead.
+
+## Rendering strategy, and why some of it is baked
+
+The brief asks for vector rendering rather than image assets. Most of the
+face obeys that — every value is a live widget — but the circular geometry
+cannot, and it is worth knowing why before "fixing" it.
+
+This runtime has **no verified primitive for an angled line or an
+arbitrary arc**. `FILL_RECT` is axis-aligned only, and `ARC_PROGRESS` is
+unverified here; betting the face on it risks the silent black screen this
+project has hit before. So:
+
+- **Static chrome** — the outer ring, the ticks, the brackets, the
+  unfilled gauge tracks — is baked into one generated `bg.png`. It is
+  static by definition, so nothing dynamic is lost.
+- **Gauge fills** are pre-rendered sprite frames at 5% granularity, each
+  cropped by `layout.arcBox()` to its own tight bounds. All 88 frames come
+  to 72 KB because of that cropping; the battery arc's frame is 160x34
+  rather than the 254x254 its full circle would need.
+- **The time** is generated glyph artwork, because the platform's text
+  widgets can only use the system font and the squared numerals are the
+  design's whole character.
+- **Everything else** — every number, label and the battery fill — is a
+  live `TEXT` or `FILL_RECT` widget.
+
+`layout.arcBox()` is used by both the generator and the face, so a sprite
+can never land off its track.
+
+## scene.js takes its dependencies as an argument
+
+`zeus build` glob-scans every `.js` under `app/` and treats each one as a
+bundle entry. **A CommonJS entry cannot resolve a relative `require`**, so
+any module under `app/watchface/` that requires a sibling fails the build
+with `UNRESOLVED_IMPORT`. The other pure modules get away with it only
+because they require nothing.
+
+`scene.js` needs five of them, so they are injected: `index.js` assembles
+the bundle from its own ESM imports and the test suite assembles the same
+thing with plain requires. A test in `test/assets.test.js` fails if anyone
+reintroduces a sibling `require`.
+
+Related: `index.js` reaches these CommonJS modules through **namespace**
+imports and destructures them. Calling a member directly
+(`scene.createScene(...)`) makes rollup warn that the export cannot be
+found — the prelude to a runtime failure.
 
 ## Not implemented from the reference
 
-Four elements from `reference.png` are deliberately not built, because
-they either can't exist on a watch face or would mean showing fake data
-as real:
-
-- **The "Outdoor Run" pill is not interactive and has no chevron.**
-  Watch faces cannot host tap targets that launch workouts — the
-  platform doesn't expose that hook. It's also been re-titled **"Today"**
-  and shows the wearer's actual distance for the day (or `--` if the
-  sensor has no value), rather than the reference's static
-  "2.5 km · 24 min", which would otherwise be fabricated data presented
-  as if it were real.
-- **The three page-indicator dots are not drawn.** They belong to the
-  system launcher's widget carousel (the UI for swiping between watch
-  faces/widgets), not to the face itself — a face has no way to draw
-  into that chrome.
-- **The "amazfit" wordmark is not drawn.** It's system/product branding
-  from the marketing mockup, not something a third-party watch face is
-  meant to render.
-- **The bar charts in the stat cards are static decoration, not live
-  data.** The watch face sensor API exposes current values for steps,
-  heart rate, and calories, but no per-hour history for any of them —
-  there is nothing to chart. The bars are fixed decorative shapes; this
-  is called out in a comment at the point they're drawn in
-  `app/watchface/index.js`.
+- **Weather, heart rate, SpO2, notifications and music are absent by
+  design**, per the brief. Their permissions have been removed from
+  `app.json` too.
+- **The stress dial may never populate.** Stress is not part of the
+  documented `@zos/sensor` surface at this API level. The face probes for
+  it and shows `--` with an empty dial when it is missing. It deliberately
+  does **not** substitute heart rate: a different metric under a `STRESS`
+  label would misreport what the wearer is reading.
+- **Always-on display shows the time and date only.** Arcs and metrics
+  there would cost battery for something the panel barely renders.
 
 ## What is verified, and what is not
 
-Verified against the running Zepp OS Simulator (Active 2, firmware
-v1.1.0, simulator v2.1.2):
+Verified locally:
 
-- `npm test` — 59/59 passing.
-- `npm run build` — produces an installable `.zab`.
-- The face **loads with no runtime error**. The simulator's device
-  console shows the module loading with no `ERROR >` line following it.
-- The background asset resolves on device: `getImageInfo('images/bg.png')`
-  returns `{width: 466, height: 466}` (a missing path returns `0x0`).
-- Health sensors return real values once the permissions above are
-  declared (step, heart rate and calorie all read back).
-- `Time.getDay()` is 1-7 Monday-first and `getMonth()` is 1-based,
-  matching `format.js` — confirmed against a known date.
+- `npm test` — 149/149 passing.
+- `npm run build` — produces a 270 KB `.zab` with no rollup warnings.
+- `npm run assets` — regenerating every asset is byte-identical, so the
+  artwork is reproducible from source.
+- The full composition renders correctly off-device: `scene.js` is pure,
+  so a preview tool renders the exact descriptor list the watch consumes.
+  Checked at both extremes — a full face and one with a dead battery, a
+  one-digit hour and a missing stress sensor.
 
-Still NOT verified:
+Still **not** verified:
 
-- **Pixel-level appearance.** The device screen is rendered by QEMU in a
-  native window that is not capturable from a script, so the actual
-  composition — spacing, overlap, colour against the backdrop — has not
-  been inspected. The face loads cleanly and its widgets are created,
-  but "renders without error" is not the same as "looks right".
-- **Font metrics.** `TYPE.TIME` (`app/watchface/tokens.js`) is `76`px,
-  and the hour/minute split (`RECT.TIME` in `app/watchface/layout.js`,
-  halved in `index.js`) is derived by measuring `reference.png`, not
-  from real glyph metrics. Where the hour and minute meet at the colon
-  will likely need nudging.
-- **Distance sensor units.** `new Distance().getCurrent()` is **assumed**
-  to be metres and divided by 1000. If the on-device reading is off by
-  1000x, that one line in `app/watchface/index.js` is the fix.
-- **Current temperature.** `Weather.getForecast()` is the only weather
-  API and its per-day entry is `{high, low, index}` — there is no
-  current-temperature field in the simulator. The code tries `current`,
-  `temp` and `temperature` before falling back to `--°`, in case real
-  firmware exposes one. Hi/lo come from `high`/`low`, which read `0` in
-  the simulator because it has no real weather data.
-- **On a physical watch.** Everything above is the simulator. The real
-  device has not been tested.
+- **Anything on real hardware, or even the simulator.** This redesign has
+  not been run on a device. "Builds cleanly" is not "renders correctly".
+- **Whether a stress sensor exists at all** on this runtime.
+- **Whether `Step.getTarget()` exists.** The steps ring prefers the goal
+  set in the Zepp app and falls back to 10,000 when the call is absent.
+- **System font metrics.** Every text widget is sized from the reference's
+  measured pixel bounds, not from real glyph metrics, so the small caps
+  may need nudging once seen on the panel.
 
 ## API generation: this targets `@zos/*`, not the `hm*` globals
 
@@ -247,8 +296,7 @@ This project uses the current module API:
 ```js
 import * as hmUI from '@zos/ui'
 import { getScene, SCENE_AOD } from '@zos/app'
-import { Time, Battery, Step, HeartRate, Calorie, Distance, Weather,
-         TIME_HOUR_FORMAT_12 } from '@zos/sensor'
+import { Time, Battery, Step, Calorie } from '@zos/sensor'
 ```
 
 Note in particular:
@@ -274,14 +322,15 @@ to read the device console programmatically when debugging.
   "data:user.hd.step",
   "data:user.hd.heart_rate",
   "data:user.hd.calorie",
-  "data:user.hd.distance",
-  "data:user.hd.weather"
+  "data:user.hd.stress"
 ]
 ```
 
-Without these, constructing `Step`, `HeartRate`, `Calorie` or `Distance`
-throws `PERMISSION DENIED data:user.hd.<name>` and the stat cards stay
-empty. This fails the same silent way as the API mismatch above.
+Without these, constructing `Step` or `Calorie` throws
+`PERMISSION DENIED data:user.hd.<name>` and the metric sits empty. This
+fails the same silent way as the API mismatch above — which is why every
+sensor here is constructed and read inside a `try`, and a failure renders
+`--` rather than taking the face down.
 
 ## A note on `hmUI.show_level.ONAL_AOD`
 

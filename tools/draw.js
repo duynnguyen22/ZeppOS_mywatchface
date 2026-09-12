@@ -220,6 +220,161 @@ function fillPath(canvas, points, color, alpha) {
   fillPoly(canvas, samplePath(points), color, alpha)
 }
 
+// An arc is a ring band: filled between rInner and rOuter, swept CLOCKWISE
+// from startDeg to endDeg. Angles are degrees clockwise from 12 o'clock -
+// the same convention layout.polar() uses, so the generator and the layout
+// table speak one coordinate language.
+//
+// `roundCaps` adds a disc at each end, centred on the band's midline. The
+// design's gauges have rounded ends; the decorative ticks do not.
+function fillArc(canvas, cx, cy, rInner, rOuter, startDeg, endDeg, color, alpha, roundCaps) {
+  const { r, g, b, a } = toRGBA(color, alpha)
+  const span = ((endDeg - startDeg) % 360 + 360) % 360
+  if (span === 0) return
+  const x0 = Math.max(0, Math.floor(cx - rOuter))
+  const x1 = Math.min(canvas.width - 1, Math.ceil(cx + rOuter))
+  const y0 = Math.max(0, Math.floor(cy - rOuter))
+  const y1 = Math.min(canvas.height - 1, Math.ceil(cy + rOuter))
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const dx = x + 0.5 - cx
+      const dy = y + 0.5 - cy
+      const dist = Math.hypot(dx, dy)
+      if (dist < rInner || dist > rOuter) continue
+      // atan2 measures from 3 o'clock counter-clockwise-positive-down here;
+      // +90 rotates the origin to 12 o'clock.
+      const deg = ((Math.atan2(dy, dx) * 180) / Math.PI + 90 + 360) % 360
+      const offset = ((deg - startDeg) % 360 + 360) % 360
+      if (offset <= span) canvas.set(x, y, r, g, b, a)
+    }
+  }
+  if (!roundCaps) return
+  const mid = (rInner + rOuter) / 2
+  const capR = (rOuter - rInner) / 2
+  for (const deg of [startDeg, endDeg]) {
+    const rad = ((deg - 90) * Math.PI) / 180
+    fillCircle(canvas, cx + mid * Math.cos(rad), cy + mid * Math.sin(rad), capR, color, alpha)
+  }
+}
+
+// Separable box blur, premultiplied so transparent pixels contribute no
+// colour. Used to build the bloom around the bright elements: blur a copy
+// of a shape, composite it under the crisp original.
+function boxBlur(canvas, radius) {
+  if (radius <= 0) return canvas
+  const { width: w, height: h } = canvas
+  const pass = (src) => {
+    const out = new Float64Array(src.length)
+    // Horizontal.
+    const tmp = new Float64Array(src.length)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let rs = 0, gs = 0, bs = 0, as = 0, n = 0
+        for (let k = -radius; k <= radius; k++) {
+          const sx = x + k
+          if (sx < 0 || sx >= w) continue
+          const i = (y * w + sx) * 4
+          const al = src[i + 3] / 255
+          rs += src[i] * al; gs += src[i + 1] * al; bs += src[i + 2] * al; as += al
+          n++
+        }
+        const o = (y * w + x) * 4
+        tmp[o] = rs / n; tmp[o + 1] = gs / n; tmp[o + 2] = bs / n; tmp[o + 3] = as / n
+      }
+    }
+    // Vertical, over the premultiplied intermediate.
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let rs = 0, gs = 0, bs = 0, as = 0, n = 0
+        for (let k = -radius; k <= radius; k++) {
+          const sy = y + k
+          if (sy < 0 || sy >= h) continue
+          const i = (sy * w + x) * 4
+          rs += tmp[i]; gs += tmp[i + 1]; bs += tmp[i + 2]; as += tmp[i + 3]
+          n++
+        }
+        const o = (y * w + x) * 4
+        out[o] = rs / n; out[o + 1] = gs / n; out[o + 2] = bs / n; out[o + 3] = as / n
+      }
+    }
+    return out
+  }
+  const blurred = pass(canvas.data)
+  const result = new Canvas(w, h)
+  for (let i = 0; i < blurred.length; i += 4) {
+    const al = blurred[i + 3]
+    // Un-premultiply back to plain RGBA.
+    if (al > 0) {
+      result.data[i] = blurred[i] / al
+      result.data[i + 1] = blurred[i + 1] / al
+      result.data[i + 2] = blurred[i + 2] / al
+    }
+    result.data[i + 3] = al * 255
+  }
+  return result
+}
+
+// Lay `src` over `dst`, scaling the source alpha by `strength` (0..1).
+function compositeOver(dst, src, strength = 1) {
+  for (let y = 0; y < dst.height; y++) {
+    for (let x = 0; x < dst.width; x++) {
+      const i = (y * src.width + x) * 4
+      const a = src.data[i + 3] * strength
+      if (a <= 0) continue
+      dst.set(x, y, src.data[i], src.data[i + 1], src.data[i + 2], a)
+    }
+  }
+}
+
+// A rectangle with rounded corners. `r` is clamped so it can never exceed
+// half the shorter side, which keeps a "pill" from inverting.
+function fillRoundRect(canvas, x, y, w, h, r, color, alpha) {
+  const { r: cr, g: cg, b: cb, a: ca } = toRGBA(color, alpha)
+  const rad = Math.max(0, Math.min(r, Math.min(w, h) / 2))
+  const x0 = Math.max(0, Math.floor(x))
+  const x1 = Math.min(canvas.width - 1, Math.ceil(x + w))
+  const y0 = Math.max(0, Math.floor(y))
+  const y1 = Math.min(canvas.height - 1, Math.ceil(y + h))
+  for (let py = y0; py <= y1; py++) {
+    for (let px = x0; px <= x1; px++) {
+      if (insideRoundRect(px + 0.5, py + 0.5, x, y, w, h, rad)) {
+        canvas.set(px, py, cr, cg, cb, ca)
+      }
+    }
+  }
+}
+
+function insideRoundRect(px, py, x, y, w, h, rad) {
+  if (px < x || py < y || px > x + w || py > y + h) return false
+  // Clamp the point into the inner rectangle; outside a corner box the
+  // clamped point IS the point, so the distance test only bites in corners.
+  const cx = Math.min(Math.max(px, x + rad), x + w - rad)
+  const cy = Math.min(Math.max(py, y + rad), y + h - rad)
+  return Math.hypot(px - cx, py - cy) <= rad
+}
+
+// Punch a rounded-rect hole straight back to fully transparent. The digit
+// counters need this: source-over can only add, so a "hole" drawn in the
+// background colour would still be opaque and would show as a black patch
+// wherever the glyph is composited onto something else.
+function eraseRoundRect(canvas, x, y, w, h, r) {
+  const rad = Math.max(0, Math.min(r, Math.min(w, h) / 2))
+  const x0 = Math.max(0, Math.floor(x))
+  const x1 = Math.min(canvas.width - 1, Math.ceil(x + w))
+  const y0 = Math.max(0, Math.floor(y))
+  const y1 = Math.min(canvas.height - 1, Math.ceil(y + h))
+  for (let py = y0; py <= y1; py++) {
+    for (let px = x0; px <= x1; px++) {
+      if (!insideRoundRect(px + 0.5, py + 0.5, x, y, w, h, rad)) continue
+      const i = (py * canvas.width + px) * 4
+      canvas.data[i] = 0
+      canvas.data[i + 1] = 0
+      canvas.data[i + 2] = 0
+      canvas.data[i + 3] = 0
+    }
+  }
+}
+
 // Box-downsample a canvas by an integer factor, premultiplying by alpha
 // before averaging so edge pixels next to fully-transparent ones don't
 // pick up leftover colour from the "outside".
@@ -281,6 +436,12 @@ module.exports = {
   fillPoly,
   samplePath,
   fillPath,
+  fillArc,
+  boxBlur,
+  compositeOver,
+  fillRoundRect,
+  eraseRoundRect,
+  insideRoundRect,
   pointInPolygon,
   downsample,
   renderSupersampled,

@@ -54,11 +54,10 @@ test('the background file is a valid PNG', () => {
 })
 
 // index.js references these as 'images/ic-*.png', resolved from
-// assets/<target>/, for the weather icon, the three stat-card icons, and
-// the activity pill icon. Guarded the same way as bg.png above: nothing
+// assets/<target>/, one per metric. Guarded the same way as bg.png above: nothing
 // else catches a missing or truncated icon file, and a missing asset makes
 // hmUI.getImageInfo() return 0x0, so the widget silently draws nothing.
-const iconNames = ['ic-weather', 'ic-steps', 'ic-heart', 'ic-flame', 'ic-runner']
+const iconNames = ['ic-steps', 'ic-stress', 'ic-kcal']
 
 for (const name of iconNames) {
   const iconPath = path.join(
@@ -79,3 +78,22 @@ for (const name of iconNames) {
     assert.ok(bytes.subarray(0, 8).equals(PNG_SIGNATURE))
   })
 }
+
+// zeus build glob-scans every .js under app/ and treats each as its own
+// bundle entry. A CommonJS entry cannot resolve a relative require, so a
+// module here that requires a sibling fails the build with
+// UNRESOLVED_IMPORT - and the failure looks like a toolchain bug, not a
+// code smell. scene.js takes its dependencies as an argument for exactly
+// this reason; this test stops anyone reintroducing the trap.
+test('no watchface module requires a sibling module', () => {
+  const dir = path.join(__dirname, '..', 'app', 'watchface')
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.js'))) {
+    const source = fs.readFileSync(path.join(dir, file), 'utf8')
+    const offenders = source.match(/require\(\s*['"]\.\.?\//g)
+    assert.strictEqual(
+      offenders,
+      null,
+      `${file} requires a sibling module, which breaks zeus build`
+    )
+  }
+})

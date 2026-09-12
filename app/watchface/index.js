@@ -1,370 +1,215 @@
 import * as hmUI from '@zos/ui'
 import { getScene, SCENE_AOD, SCENE_WATCHFACE } from '@zos/app'
-import {
-  Time,
-  Battery,
-  Step,
-  HeartRate,
-  Calorie,
-  Distance,
-  Weather,
-  TIME_HOUR_FORMAT_12,
-} from '@zos/sensor'
+import { Time, Battery, Step, Calorie } from '@zos/sensor'
 
 import * as tokens from './tokens.js'
 import * as layout from './layout.js'
-import * as fmt from './format.js'
+import * as gauge from './gauge.js'
+import * as digits from './digits.js'
+import * as format from './format.js'
+// Namespace import, not a named one: these modules are CommonJS and
+// rollup cannot statically see their named exports.
+import * as scene from './scene.js'
 
-const { COLOR, TYPE } = tokens
-const { RECT, statCard, CARD_INSET, CHART } = layout
-const {
-  formatHour, formatMinute, meridiem, formatDate,
-  formatSteps, formatBattery, formatTemp, formatHiLo,
-  formatHeart, formatCalories, formatDistance,
-} = fmt
+const { COLOR } = tokens
+const { RECT } = layout
 
-const IMG = 'images/'
+// scene.js cannot require these itself - zeus treats every .js under app/
+// as a bundle entry, and a CommonJS entry cannot resolve relative
+// requires. Assembling the bundle here, where ESM imports do resolve, is
+// what keeps the build working. See the note at the top of scene.js.
+//
+// Destructured rather than called as `scene.createScene(...)`: rollup
+// cannot statically see named exports on a CommonJS entry and warns on a
+// direct member call, which on this toolchain is the prelude to a silent
+// black screen. Destructuring is the access pattern the rest of this file
+// already uses for the other CommonJS modules.
+const { createScene } = scene
+const SCENE_ENV = Object.assign({}, tokens, layout, gauge, digits, format)
+
+// This is the ONLY file that touches the Zepp platform. Everything about
+// what the face looks like lives in scene.js, which is pure and testable;
+// this file's whole job is turning those descriptors into widgets and
+// keeping the changing ones up to date.
+//
+// API generation matters here: this runtime has NO hmUI/hmSensor globals.
+// Code written against them throws on first use and the toolchain swallows
+// the error, leaving a black screen. See docs/ZEPP-API-FINDINGS.md.
+
+const ALIGN = {
+  left: hmUI.align.LEFT,
+  center: hmUI.align.CENTER_H,
+  right: hmUI.align.RIGHT,
+}
+
+// A sensor reading, or null if the sensor is absent or not yet reporting.
+// Constructing an unsupported sensor class throws on this platform, so
+// every read is guarded rather than assumed.
+function read(sensor) {
+  if (!sensor) return null
+  try {
+    const value = sensor.getCurrent()
+    return typeof value === 'number' && isFinite(value) ? value : null
+  } catch (e) {
+    return null
+  }
+}
+
+function makeSensor(Ctor) {
+  if (typeof Ctor !== 'function') return null
+  try {
+    return new Ctor()
+  } catch (e) {
+    return null
+  }
+}
+
+// The step goal the wearer set in the Zepp app, when the runtime exposes
+// it. Absent on some firmware, so the ring falls back to GOAL.STEPS.
+function readStepGoal(sensor) {
+  if (!sensor || typeof sensor.getTarget !== 'function') return null
+  try {
+    const target = sensor.getTarget()
+    return typeof target === 'number' && target > 0 ? target : null
+  } catch (e) {
+    return null
+  }
+}
 
 WatchFace({
   build() {
+    const buildScene = createScene(SCENE_ENV)
     const isAod = getScene() === SCENE_AOD
     const time = new Time()
+    const battery = makeSensor(Battery)
+    const step = makeSensor(Step)
+    const calorie = makeSensor(Calorie)
 
-    // The reference design shows 12-hour time with an AM/PM suffix, so the
-    // face uses 12-hour regardless of the watch's own 24-hour setting —
-    // otherwise there is no meridiem to display and the suffix stays blank.
-    // Set this to `time.getHourFormat() === TIME_HOUR_FORMAT_12` instead to
-    // follow the system setting.
-    const is12h = true
+    // Stress is not part of the documented @zos/sensor surface at this API
+    // level. It is probed rather than assumed, and when it is absent the
+    // dial shows '--' with an empty gauge. It deliberately does NOT fall
+    // back to heart rate: showing a different metric under a STRESS label
+    // would be a lie, and the brief rules heart rate out entirely.
+    let stress = null
+    try {
+      // eslint-disable-next-line global-require
+      const sensors = require('@zos/sensor')
+      stress = makeSensor(sensors.Stress)
+    } catch (e) {
+      stress = null
+    }
 
-    // Background: the artwork in normal mode, a flat fill in AOD.
-    if (isAod) {
-      hmUI.createWidget(hmUI.widget.FILL_RECT, {
-        ...RECT.BACKGROUND,
-        color: COLOR.BG_DEEP,
-      })
-    } else {
-      hmUI.createWidget(hmUI.widget.IMG, {
-        ...RECT.BACKGROUND,
-        src: IMG + 'bg.png',
-        show_level: hmUI.show_level.ONLY_NORMAL,
-      })
+    function collect() {
+      return {
+        hour: time.getHours(),
+        minute: time.getMinutes(),
+        weekday: time.getDay(),
+        day: time.getDate(),
+        battery: read(battery),
+        steps: read(step),
+        stress: read(stress),
+        kcal: read(calorie),
+        stepGoal: readStepGoal(step),
+      }
     }
 
     const bothScreens = hmUI.show_level.ONLY_NORMAL | hmUI.show_level.ONAL_AOD
+    const normalOnly = hmUI.show_level.ONLY_NORMAL
 
-    // Date.
-    const dateText = hmUI.createWidget(hmUI.widget.TEXT, {
-      ...RECT.DATE,
-      color: COLOR.WHITE,
-      text_size: TYPE.DATE,
-      align_h: hmUI.align.CENTER_H,
-      align_v: hmUI.align.CENTER_V,
-      char_space: 2,
-      text: '',
-      show_level: bothScreens,
-    })
-
-    // Time is two widgets so the hour and minute can differ in colour.
-    const hourHalf = Math.round(RECT.TIME.w / 2)
-    const hourText = hmUI.createWidget(hmUI.widget.TEXT, {
-      x: RECT.TIME.x,
-      y: RECT.TIME.y,
-      w: hourHalf,
-      h: RECT.TIME.h,
-      color: COLOR.WHITE,
-      text_size: TYPE.TIME,
-      align_h: hmUI.align.RIGHT,
-      align_v: hmUI.align.CENTER_V,
-      text: '',
-      show_level: bothScreens,
-    })
-
-    const minuteText = hmUI.createWidget(hmUI.widget.TEXT, {
-      x: RECT.TIME.x + hourHalf,
-      y: RECT.TIME.y,
-      w: RECT.TIME.w - hourHalf,
-      h: RECT.TIME.h,
-      color: COLOR.MINT,
-      text_size: TYPE.TIME,
-      align_h: hmUI.align.LEFT,
-      align_v: hmUI.align.CENTER_V,
-      text: '',
-      show_level: bothScreens,
-    })
-
-    const meridiemText = hmUI.createWidget(hmUI.widget.TEXT, {
-      ...RECT.MERIDIEM,
-      color: COLOR.MUTED,
-      text_size: TYPE.MERIDIEM,
-      align_h: hmUI.align.LEFT,
-      align_v: hmUI.align.CENTER_V,
-      text: '',
-      show_level: hmUI.show_level.ONLY_NORMAL,
-    })
-
-    if (!isAod) {
-      hmUI.createWidget(hmUI.widget.TEXT, {
-        ...RECT.TAGLINE,
-        color: COLOR.MUTED,
-        text_size: TYPE.TAGLINE,
-        align_h: hmUI.align.CENTER_H,
-        align_v: hmUI.align.CENTER_V,
-        text: 'Move today for a better tomorrow',
-        show_level: hmUI.show_level.ONLY_NORMAL,
-      })
+    // In AOD only the time and date are drawn, on unlit black. Arcs and
+    // metrics there would cost battery for something barely rendered.
+    if (isAod) {
+      hmUI.createWidget(hmUI.widget.FILL_RECT, { ...RECT.BACKGROUND, color: COLOR.BG })
     }
 
-    const updateTime = () => {
-      const hour = time.getHours()
-      const minute = time.getMinutes()
-      const week = time.getDay()
-      const month = time.getMonth()
-      const day = time.getDate()
-      // The colon rides with the hour so the pair stays optically centred.
-      hourText.setProperty(hmUI.prop.TEXT, formatHour(hour, is12h) + ':')
-      minuteText.setProperty(hmUI.prop.TEXT, formatMinute(minute))
-      meridiemText.setProperty(hmUI.prop.TEXT, is12h ? meridiem(hour) : '')
-      dateText.setProperty(hmUI.prop.TEXT, formatDate(week, month, day))
-    }
+    // Create every widget once; remember the ones that change.
+    const dynamic = {}
 
-    updateTime()
+    for (const el of buildScene(collect())) {
+      if (isAod && !el.aod) continue
+      const level = el.aod ? bothScreens : normalOnly
+      let widget = null
 
-    hmUI.createWidget(hmUI.widget.WIDGET_DELEGATE, {
-      resume_call: () => {
-        time.onPerMinute(updateTime)
-        updateTime()
-      },
-      pause_call: () => {
-        time.offPerMinute(updateTime)
-      },
-    })
-
-    this.buildComplications(isAod)
-  },
-
-  buildComplications(isAod) {
-    // Everything here is normal-screen only; AOD stays minimal for battery.
-    if (isAod) return
-
-    const normal = hmUI.show_level.ONLY_NORMAL
-
-    const batterySensor = new Battery()
-    const stepSensor = new Step()
-    const heartSensor = new HeartRate()
-    const calorieSensor = new Calorie()
-    const weatherSensor = new Weather()
-    const distanceSensor = new Distance()
-
-    // Weather icon: a generated sun-behind-cloud glyph (see
-    // tools/make-icons.js), scaled into the same slot the placeholder used.
-    hmUI.createWidget(hmUI.widget.IMG, {
-      x: RECT.WEATHER_ICON.x, y: RECT.WEATHER_ICON.y,
-      w: RECT.WEATHER_ICON.w, h: RECT.WEATHER_ICON.h,
-      src: IMG + 'ic-weather.png', show_level: normal,
-    })
-
-    const tempText = hmUI.createWidget(hmUI.widget.TEXT, {
-      x: RECT.TEMP.x, y: RECT.TEMP.y, w: RECT.TEMP.w, h: RECT.TEMP.h,
-      color: COLOR.WHITE, text_size: TYPE.TEMP,
-      align_h: hmUI.align.LEFT, align_v: hmUI.align.CENTER_V,
-      text: '', show_level: normal,
-    })
-
-    const hiloText = hmUI.createWidget(hmUI.widget.TEXT, {
-      x: RECT.HILO.x, y: RECT.HILO.y, w: RECT.HILO.w, h: RECT.HILO.h,
-      color: COLOR.MUTED, text_size: TYPE.HILO,
-      align_h: hmUI.align.LEFT, align_v: hmUI.align.CENTER_V,
-      text: '', show_level: normal,
-    })
-
-    const batteryText = hmUI.createWidget(hmUI.widget.TEXT, {
-      x: RECT.BATTERY_TEXT.x, y: RECT.BATTERY_TEXT.y,
-      w: RECT.BATTERY_TEXT.w, h: RECT.BATTERY_TEXT.h,
-      color: COLOR.WHITE, text_size: TYPE.BATTERY,
-      align_h: hmUI.align.RIGHT, align_v: hmUI.align.CENTER_V,
-      text: '', show_level: normal,
-    })
-
-    // Battery icon drawn as a rounded outline plus a fill bar.
-    hmUI.createWidget(hmUI.widget.STROKE_RECT, {
-      x: RECT.BATTERY_ICON.x, y: RECT.BATTERY_ICON.y,
-      w: RECT.BATTERY_ICON.w - 4, h: RECT.BATTERY_ICON.h,
-      radius: 4, line_width: 2, color: COLOR.MUTED, show_level: normal,
-    })
-    const batteryFill = hmUI.createWidget(hmUI.widget.FILL_RECT, {
-      x: RECT.BATTERY_ICON.x + 3, y: RECT.BATTERY_ICON.y + 3,
-      w: 1, h: RECT.BATTERY_ICON.h - 6,
-      radius: 2, color: COLOR.MINT, show_level: normal,
-    })
-
-    // Stat cards: steps, heart rate, calories.
-    const cards = [
-      { label: 'steps', color: COLOR.MINT, icon: 'ic-steps' },
-      { label: 'bpm', color: COLOR.CORAL, icon: 'ic-heart' },
-      { label: 'kcal', color: COLOR.AMBER, icon: 'ic-flame' },
-    ].map((config, index) => {
-      const box = statCard(index)
-
-      hmUI.createWidget(hmUI.widget.FILL_RECT, {
-        x: box.x, y: box.y, w: box.w, h: box.h,
-        radius: 18, color: COLOR.CARD_BG, show_level: normal,
-      })
-
-      hmUI.createWidget(hmUI.widget.IMG, {
-        x: box.x + CARD_INSET.ICON.dx, y: box.y + CARD_INSET.ICON.dy,
-        w: CARD_INSET.ICON.w, h: CARD_INSET.ICON.h,
-        src: IMG + config.icon + '.png', show_level: normal,
-      })
-
-      const value = hmUI.createWidget(hmUI.widget.TEXT, {
-        x: box.x + CARD_INSET.VALUE.dx, y: box.y + CARD_INSET.VALUE.dy,
-        w: CARD_INSET.VALUE.w, h: CARD_INSET.VALUE.h,
-        color: COLOR.WHITE, text_size: TYPE.STAT_VALUE,
-        align_h: hmUI.align.LEFT, align_v: hmUI.align.CENTER_V,
-        text: '', show_level: normal,
-      })
-
-      hmUI.createWidget(hmUI.widget.TEXT, {
-        x: box.x + CARD_INSET.LABEL.dx, y: box.y + CARD_INSET.LABEL.dy,
-        w: CARD_INSET.LABEL.w, h: CARD_INSET.LABEL.h,
-        color: COLOR.MUTED, text_size: TYPE.STAT_LABEL,
-        align_h: hmUI.align.LEFT, align_v: hmUI.align.CENTER_V,
-        text: config.label, show_level: normal,
-      })
-
-      // Decorative bars. The watchface API exposes no per-hour history for
-      // these metrics, so these are intentionally static, not live data.
-      const heights = [7, 11, 9, 15, 12, 18, 10, 14, 8]
-      for (let bar = 0; bar < CHART.bars; bar++) {
-        const height = heights[bar]
-        hmUI.createWidget(hmUI.widget.FILL_RECT, {
-          x: box.x + CARD_INSET.CHART.dx + bar * (CHART.barW + CHART.gap),
-          y: box.y + CARD_INSET.CHART.dy + (CARD_INSET.CHART.h - height),
-          w: CHART.barW,
-          h: height,
-          radius: 2,
-          color: config.color,
-          show_level: normal,
+      if (el.kind === 'image') {
+        widget = hmUI.createWidget(hmUI.widget.IMG, {
+          x: el.x, y: el.y, w: el.w, h: el.h,
+          src: el.src || '',
+          show_level: level,
+        })
+      } else if (el.kind === 'text') {
+        widget = hmUI.createWidget(hmUI.widget.TEXT, {
+          x: el.x, y: el.y, w: el.w, h: el.h,
+          color: el.color,
+          text_size: el.size,
+          align_h: ALIGN[el.align] || hmUI.align.CENTER_H,
+          align_v: hmUI.align.CENTER_V,
+          char_space: el.tracking || 0,
+          text: el.text,
+          show_level: level,
+        })
+      } else if (el.kind === 'rect') {
+        widget = hmUI.createWidget(hmUI.widget.FILL_RECT, {
+          x: el.x, y: el.y, w: el.w, h: el.h,
+          color: el.color,
+          show_level: level,
+        })
+      } else if (el.kind === 'strokeRect') {
+        widget = hmUI.createWidget(hmUI.widget.STROKE_RECT, {
+          x: el.x, y: el.y, w: el.w, h: el.h,
+          color: el.color,
+          line_width: 2,
+          show_level: level,
         })
       }
 
-      return value
-    })
+      if (widget && el.key) dynamic[el.key] = widget
+    }
 
-    // Activity pill. Static display only - watch faces cannot launch
-    // workouts, so there is deliberately no tap handler and no chevron.
-    hmUI.createWidget(hmUI.widget.FILL_RECT, {
-      x: RECT.PILL.x, y: RECT.PILL.y, w: RECT.PILL.w, h: RECT.PILL.h,
-      radius: 30, color: COLOR.CARD_BG, show_level: normal,
-    })
-    hmUI.createWidget(hmUI.widget.FILL_RECT, {
-      x: RECT.PILL.x + 12, y: RECT.PILL.y + 12, w: 35, h: 35,
-      radius: 18, color: COLOR.BG_DEEP, show_level: normal,
-    })
-    hmUI.createWidget(hmUI.widget.IMG, {
-      x: RECT.PILL.x + 12, y: RECT.PILL.y + 12, w: 35, h: 35,
-      src: IMG + 'ic-runner.png', show_level: normal,
-    })
-    hmUI.createWidget(hmUI.widget.TEXT, {
-      x: RECT.PILL.x + 60, y: RECT.PILL.y + 8, w: 200, h: 26,
-      color: COLOR.WHITE, text_size: TYPE.PILL_TITLE,
-      align_h: hmUI.align.LEFT, align_v: hmUI.align.CENTER_V,
-      text: 'Today', show_level: normal,
-    })
-    const pillDetail = hmUI.createWidget(hmUI.widget.TEXT, {
-      x: RECT.PILL.x + 60, y: RECT.PILL.y + 32, w: 200, h: 22,
-      color: COLOR.MUTED, text_size: TYPE.PILL_DETAIL,
-      align_h: hmUI.align.LEFT, align_v: hmUI.align.CENTER_V,
-      text: '', show_level: normal,
-    })
+    // Re-derive the scene and push only what changed. Rebuilding widgets
+    // every tick would flicker and leak.
+    function refresh() {
+      for (const el of buildScene(collect())) {
+        const widget = el.key && dynamic[el.key]
+        if (!widget) continue
 
-    const safeCurrent = (sensor) => {
-      try {
-        return sensor.getCurrent()
-      } catch (e) {
-        return null
+        if (el.kind === 'image') {
+          // A time slot with no glyph (one-digit hour) is collapsed rather
+          // than hidden: VISIBLE is not verified on this runtime, but a
+          // 1x1 image with an empty source reliably draws nothing.
+          widget.setProperty(hmUI.prop.MORE, {
+            x: el.x, y: el.y, w: el.w, h: el.h, src: el.src || '',
+          })
+        } else if (el.kind === 'text') {
+          widget.setProperty(hmUI.prop.TEXT, el.text)
+        } else if (el.kind === 'rect') {
+          widget.setProperty(hmUI.prop.MORE, {
+            x: el.x, y: el.y, w: el.w, h: el.h, color: el.color,
+          })
+        }
       }
     }
 
-    const updateData = () => {
-      const battery = safeCurrent(batterySensor)
-      batteryText.setProperty(hmUI.prop.TEXT, formatBattery(battery))
-      // prop.MORE replaces the widget's full geometry - a partial object
-      // zeroes out the x/y/h properties it omits, which is why the bar
-      // used to vanish. Always pass the complete rect, only w changing.
-      batteryFill.setProperty(hmUI.prop.MORE, {
-        x: RECT.BATTERY_ICON.x + 3, y: RECT.BATTERY_ICON.y + 3,
-        h: RECT.BATTERY_ICON.h - 6,
-        w: Math.max(1, Math.round(((RECT.BATTERY_ICON.w - 10) * Math.max(0, Math.min(100, battery || 0))) / 100)),
-      })
+    refresh()
 
-      let forecast = null
-      try {
-        forecast = weatherSensor.getForecast()
-      } catch (e) {
-        forecast = null
-      }
-      const today =
-        forecast &&
-        forecast.forecastData &&
-        forecast.forecastData.data &&
-        forecast.forecastData.data[0]
-
-      // Verified on-device: today's forecast entry is only
-      // Weather.getForecast() is the only weather API, and in the simulator
-      // today's entry is { high, low, index } with no current-temperature
-      // field. Real firmware may expose one under a different name, so try
-      // the plausible spellings before giving up; formatTemp renders '--°'
-      // when none is present rather than printing "undefined".
-      const currentTemp = today
-        ? (today.current !== undefined ? today.current
-          : today.temp !== undefined ? today.temp
-          : today.temperature)
-        : undefined
-      tempText.setProperty(hmUI.prop.TEXT, formatTemp(currentTemp))
-      if (today) {
-        hiloText.setProperty(
-          hmUI.prop.TEXT,
-          formatHiLo(today.high, today.low)
-        )
-      }
-
-      cards[0].setProperty(hmUI.prop.TEXT, formatSteps(safeCurrent(stepSensor)))
-      cards[1].setProperty(hmUI.prop.TEXT, formatHeart(safeCurrent(heartSensor)))
-      cards[2].setProperty(hmUI.prop.TEXT, formatCalories(safeCurrent(calorieSensor)))
-
-      // Unit assumption: DISTANCE.getCurrent() is assumed to be metres,
-      // hence the /1000 below. This is unverified without real hardware -
-      // if the on-device reading is off by 1000x, this is the line to
-      // change.
-      const distanceMeters = safeCurrent(distanceSensor)
-      pillDetail.setProperty(
-        hmUI.prop.TEXT,
-        distanceMeters === null || distanceMeters === undefined
-          ? '--'
-          : formatDistance(distanceMeters / 1000)
-      )
-    }
-
-    updateData()
-
-    let dataTimer = null
+    let timer = null
     hmUI.createWidget(hmUI.widget.WIDGET_DELEGATE, {
       resume_call: () => {
         if (getScene() === SCENE_WATCHFACE) {
-          dataTimer = setInterval(updateData, 10000)
-          updateData()
+          refresh()
+          // Metrics move slowly; the minute tick handles the clock. Not
+          // clearing this on pause drains the battery.
+          timer = setInterval(refresh, 30000)
         }
       },
       pause_call: () => {
-        // Not stopping this drains the battery.
-        if (dataTimer !== null) {
-          clearInterval(dataTimer)
-          dataTimer = null
+        if (timer !== null) {
+          clearInterval(timer)
+          timer = null
         }
       },
     })
+
+    time.onPerMinute(refresh)
   },
 
   onInit() {},

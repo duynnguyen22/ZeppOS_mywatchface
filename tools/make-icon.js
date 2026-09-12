@@ -13,8 +13,8 @@ function unpack(color) {
   return [(color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff]
 }
 
-const [bgR, bgG, bgB] = unpack(COLOR.BG_DEEP)
-const [fgR, fgG, fgB] = unpack(COLOR.MINT)
+const [bgR, bgG, bgB] = unpack(COLOR.BG)
+const [fgR, fgG, fgB] = unpack(COLOR.ACCENT)
 
 const pixels = Buffer.alloc(W * H * 4)
 
