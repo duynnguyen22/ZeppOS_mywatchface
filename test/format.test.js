@@ -41,12 +41,19 @@ test('formatDate renders uppercase weekday and month', () => {
   assert.strictEqual(f.formatDate(7, 1, 1), 'SUN, JAN 1')
 })
 
-test('formatDate handles every weekday and month', () => {
+test('formatDate maps all seven weekdays correctly', () => {
+  const weekdayLiterals = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
   for (let week = 1; week <= 7; week++) {
-    for (let month = 1; month <= 12; month++) {
-      const out = f.formatDate(week, month, 15)
-      assert.match(out, /^[A-Z]{3}, [A-Z]{3} 15$/, `bad output ${out}`)
-    }
+    const out = f.formatDate(week, 3, 15)
+    assert.strictEqual(out, `${weekdayLiterals[week - 1]}, MAR 15`, `week ${week} mapping wrong`)
+  }
+})
+
+test('formatDate maps all twelve months correctly', () => {
+  const monthLiterals = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+  for (let month = 1; month <= 12; month++) {
+    const out = f.formatDate(1, month, 15)
+    assert.strictEqual(out, `MON, ${monthLiterals[month - 1]} 15`, `month ${month} mapping wrong`)
   }
 })
 
