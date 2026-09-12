@@ -1,3 +1,14 @@
+// Generates the 466x466 landscape backdrop. Deterministic and
+// dependency-free - only node:zlib via ./png.js.
+//
+// The composition is driven by WHAT IS ACTUALLY VISIBLE. The stat cards are
+// opaque and cover y 234..322, and the activity pill covers y 343..402, so
+// the lower half of the face is almost entirely hidden. An earlier version
+// put the horizon at y=300 with a mirrored-sun streak below it; both sat
+// behind the cards and showed only as a pale smear leaking around their
+// edges. The horizon now sits just above the cards, and there is no water
+// reflection, because there is no visible water to reflect in.
+
 const fs = require('node:fs')
 const path = require('node:path')
 const { encodePNG } = require('./png.js')
@@ -7,12 +18,26 @@ const H = 466
 const CX = 233
 const CY = 233
 const R = 233
-const HORIZON = 300
+
+// Just above the top edge of the stat cards (y = 234).
+const HORIZON = 232
+
+// Sun sits low and to the right, settling into the ridge line the way it
+// does in the reference, rather than floating at the same height as the
+// time where it competes with the digits for attention. Kept clear of the
+// stat cards (which start at y = 234).
+const SUN = { x: 372, y: 195, r: 19, halo: 34 }
 
 function lerp(a, b, t) {
   return a + (b - a) * t
 }
 
+function clamp01(v) {
+  return v < 0 ? 0 : v > 1 ? 1 : v
+}
+
+// Deterministic layered silhouette. Three sine terms give a ridge that
+// reads as terrain rather than a single wave.
 function ridge(x, seed, amplitude, base) {
   return (
     base -
@@ -22,6 +47,16 @@ function ridge(x, seed, amplitude, base) {
         0.1 * Math.sin(x * 0.071 + seed * 3.7))
   )
 }
+
+// Far ridges are LIGHTER than near ones. That is atmospheric perspective,
+// and it is what makes the layers separate instead of merging into one dark
+// mass - the previous version darkened them front-to-back, which flattened
+// the whole scene.
+const RIDGES = [
+  { seed: 1.0, amplitude: 20, base: 196, color: [0x14, 0x3c, 0x44] },
+  { seed: 2.4, amplitude: 26, base: 213, color: [0x0c, 0x2b, 0x33] },
+  { seed: 4.1, amplitude: 16, base: 230, color: [0x05, 0x18, 0x1e] },
+]
 
 const pixels = Buffer.alloc(W * H * 4)
 
@@ -35,6 +70,7 @@ function set(x, y, r, g, b) {
 
 for (let y = 0; y < H; y++) {
   for (let x = 0; x < W; x++) {
+    // Outside the circular face - the bezel masks this anyway.
     if (Math.hypot(x - CX, y - CY) > R) {
       set(x, y, 0, 0, 0)
       continue
@@ -43,51 +79,46 @@ for (let y = 0; y < H; y++) {
     let r, g, b
 
     if (y < HORIZON) {
-      const t = y / HORIZON
-      r = lerp(0x02, 0x0a, t)
-      g = lerp(0x18, 0x30, t)
-      b = lerp(0x1c, 0x38, t)
+      // Sky: deep at the crown, lifting toward the horizon.
+      const t = clamp01(y / HORIZON)
+      r = lerp(0x02, 0x0e, t)
+      g = lerp(0x14, 0x3e, t)
+      b = lerp(0x1a, 0x49, t)
 
-      // Sun disc.
-      const sun = Math.hypot(x - 352, y - 236)
-      if (sun < 30) {
-        const glow = 1 - sun / 30
-        r = lerp(r, 0xf0, glow)
-        g = lerp(g, 0xc9, glow)
-        b = lerp(b, 0x87, glow)
+      // Sun: a crisp disc with a tight halo, rather than a wide soft bloom.
+      const d = Math.hypot(x - SUN.x, y - SUN.y)
+      if (d < SUN.halo) {
+        const halo = Math.pow(clamp01(1 - (d - SUN.r) / (SUN.halo - SUN.r)), 2) * 0.34
+        r = lerp(r, 0xf2, halo)
+        g = lerp(g, 0xd0, halo)
+        b = lerp(b, 0x89, halo)
+      }
+      if (d < SUN.r) {
+        // Solid core, with only the outermost pixel softened so the edge
+        // reads as a disc and not as a gradient.
+        const edge = clamp01((SUN.r - d) / 2)
+        r = lerp(r, 0xf7, edge)
+        g = lerp(g, 0xdd, edge)
+        b = lerp(b, 0xa4, edge)
       }
 
-      // Mountain ridges, far to near. Each successive layer is markedly
-      // darker than the sky and than the layer behind it, so the silhouettes
-      // read as distinct bands instead of blending into a soft gradient.
-      const ridges = [
-        { y: ridge(x, 1.0, 26, 252), c: [0x06, 0x1c, 0x21] },
-        { y: ridge(x, 2.4, 34, 272), c: [0x03, 0x12, 0x16] },
-        { y: ridge(x, 4.1, 22, 292), c: [0x01, 0x08, 0x0a] },
-      ]
-      for (const item of ridges) {
-        if (y > item.y) {
-          r = item.c[0]
-          g = item.c[1]
-          b = item.c[2]
+      // Ridges, far to near. Drawn after the sun so the nearer ranges
+      // occlude it, the way the reference has the sun settling behind them.
+      for (const item of RIDGES) {
+        if (y > ridge(x, item.seed, item.amplitude, item.base)) {
+          r = item.color[0]
+          g = item.color[1]
+          b = item.color[2]
         }
       }
     } else {
-      // Water: darker, with a narrow, contained mirrored-sun streak so it
-      // does not wash out the area behind the stat cards below.
-      const t = (y - HORIZON) / (H - HORIZON)
-      r = lerp(0x04, 0x01, t)
-      g = lerp(0x14, 0x08, t)
-      b = lerp(0x18, 0x0c, t)
-
-      const streak = Math.abs(x - 352)
-      const streakWidth = lerp(14, 4, Math.min(1, t * 1.8))
-      if (streak < streakWidth && t < 0.55) {
-        const glow = (1 - streak / streakWidth) * (1 - t / 0.55) * 0.32
-        r = lerp(r, 0xf0, glow)
-        g = lerp(g, 0xc9, glow)
-        b = lerp(b, 0x87, glow)
-      }
+      // Below the horizon is almost entirely covered by the stat cards and
+      // the pill. Keep it a quiet dark gradient - anything bright here only
+      // leaks around the cards' rounded corners.
+      const t = clamp01((y - HORIZON) / (H - HORIZON))
+      r = lerp(0x05, 0x01, t)
+      g = lerp(0x16, 0x07, t)
+      b = lerp(0x1c, 0x0b, t)
     }
 
     set(x, y, Math.round(r), Math.round(g), Math.round(b))
