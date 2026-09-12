@@ -54,7 +54,7 @@ app/                     the actual Zepp OS app (this is zeus's project root)
   app.json               app manifest — targets, deviceSource list, designWidth
   app.js                 app-level lifecycle (minimal; watch face logic lives below)
   watchface/
-    index.js             the only file that touches the Zepp platform (hmUI, hmSensor, ...)
+    index.js             the only file that touches the Zepp platform (@zos/* modules)
     tokens.js             colour + typography constants (pure data)
     layout.js             screen geometry, polar(), fitsOnFace(), element rects
     format.js              display-string formatting (pure functions)
@@ -141,8 +141,8 @@ modules that run under bare Node:
 - `app/watchface/format.js` — all display-string formatting (time, date,
   battery, temperature, steps, heart rate, calories, distance)
 
-None of these three files import `hmUI`, `hmSensor`, or any other Zepp
-global, so `test/*.test.js` exercises them directly with `node --test`.
+None of these three files import any `@zos/*` module, so
+`test/*.test.js` exercises them directly with `node --test`.
 
 `app/watchface/index.js` is the **only** file that touches the Zepp
 platform: it creates widgets with `hmUI.createWidget`, reads sensors, and
@@ -189,33 +189,99 @@ as real:
   is called out in a comment at the point they're drawn in
   `app/watchface/index.js`.
 
-## Known unverified items
+## What is verified, and what is not
 
-None of the following could be checked without real hardware or the
-Zepp OS Simulator, neither of which is available in the environment this
-was built in. Only `npm test` (55/55 passing) and `npm run build`
-(produces a `.zab`) have been verified.
+Verified against the running Zepp OS Simulator (Active 2, firmware
+v1.1.0, simulator v2.1.2):
 
-- **Nothing has been rendered.** The face has not been seen in the
-  simulator or on a device — only its build output and unit tests are
-  verified.
+- `npm test` — 59/59 passing.
+- `npm run build` — produces an installable `.zab`.
+- The face **loads with no runtime error**. The simulator's device
+  console shows the module loading with no `ERROR >` line following it.
+- The background asset resolves on device: `getImageInfo('images/bg.png')`
+  returns `{width: 466, height: 466}` (a missing path returns `0x0`).
+- Health sensors return real values once the permissions above are
+  declared (step, heart rate and calorie all read back).
+- `Time.getDay()` is 1-7 Monday-first and `getMonth()` is 1-based,
+  matching `format.js` — confirmed against a known date.
+
+Still NOT verified:
+
+- **Pixel-level appearance.** The device screen is rendered by QEMU in a
+  native window that is not capturable from a script, so the actual
+  composition — spacing, overlap, colour against the backdrop — has not
+  been inspected. The face loads cleanly and its widgets are created,
+  but "renders without error" is not the same as "looks right".
 - **Font metrics.** `TYPE.TIME` (`app/watchface/tokens.js`) is `76`px,
   and the hour/minute split (`RECT.TIME` in `app/watchface/layout.js`,
-  divided in half in `app/watchface/index.js`) is derived
-  proportionally from measuring `reference.png`, not from real glyph
-  metrics. Where the hour and minute meet at the colon will likely need
-  nudging once it's actually visible.
-- **Distance sensor units.** In `app/watchface/index.js`,
-  `distanceSensor.current` is **assumed** to be metres and is divided by
-  1000 before formatting as km. If the on-device reading turns out to be
-  in different units (e.g. already km, or off by 1000x), that one line
-  is the fix.
-- **Weather forecast shape.** `weatherSensor.getForecastWeather().data[0]`
-  is assumed to have `.high` and `.low` fields, per the documented
-  sensor shape — this is unverified against the actual firmware. The
-  code checks that `today` exists before reading it, so a shape mismatch
-  degrades the hi/lo text to whatever it was initialized to (blank)
-  rather than crashing.
+  halved in `index.js`) is derived by measuring `reference.png`, not
+  from real glyph metrics. Where the hour and minute meet at the colon
+  will likely need nudging.
+- **Distance sensor units.** `new Distance().getCurrent()` is **assumed**
+  to be metres and divided by 1000. If the on-device reading is off by
+  1000x, that one line in `app/watchface/index.js` is the fix.
+- **Current temperature.** `Weather.getForecast()` is the only weather
+  API and its per-day entry is `{high, low, index}` — there is no
+  current-temperature field in the simulator. The code tries `current`,
+  `temp` and `temperature` before falling back to `--°`, in case real
+  firmware exposes one. Hi/lo come from `high`/`low`, which read `0` in
+  the simulator because it has no real weather data.
+- **On a physical watch.** Everything above is the simulator. The real
+  device has not been tested.
+
+## API generation: this targets `@zos/*`, not the `hm*` globals
+
+This is the single most important thing to know before editing
+`app/watchface/index.js`.
+
+Older Zepp OS watch face examples — including the templates bundled with
+`zeus-cli` itself, and most tutorials online — use global objects:
+`hmUI`, `hmSensor`, `hmSetting`, `timer`, `px`. **Those globals do not
+exist on this runtime.** Every one of them is `undefined`. Code written
+against them throws on first use, and because the toolchain wraps the
+watch face in a `try/catch` that only `console.log`s, the failure is
+silent: you get a black screen with no visible error.
+
+This project uses the current module API:
+
+```js
+import * as hmUI from '@zos/ui'
+import { getScene, SCENE_AOD } from '@zos/app'
+import { Time, Battery, Step, HeartRate, Calorie, Distance, Weather,
+         TIME_HOUR_FORMAT_12 } from '@zos/sensor'
+```
+
+Note in particular:
+
+- Sensors are **classes with getter methods**: `new Battery().getCurrent()`,
+  not `sensor.current`.
+- AOD detection is `getScene() === SCENE_AOD` from `@zos/app`.
+  `@zos/display` does **not** have `getScreenType` — it only handles
+  brightness and screen-off.
+- Timers are native `setInterval` / `clearInterval`.
+- `Time` exposes `onPerMinute()` / `offPerMinute()` for minute ticks.
+
+`docs/ZEPP-API-FINDINGS.md` records the full mapping with the exact
+constant values, all probed live against the running simulator, plus how
+to read the device console programmatically when debugging.
+
+## Permissions are required for the health sensors
+
+`app/app.json` declares:
+
+```json
+"permissions": [
+  "data:user.hd.step",
+  "data:user.hd.heart_rate",
+  "data:user.hd.calorie",
+  "data:user.hd.distance",
+  "data:user.hd.weather"
+]
+```
+
+Without these, constructing `Step`, `HeartRate`, `Calorie` or `Distance`
+throws `PERMISSION DENIED data:user.hd.<name>` and the stat cards stay
+empty. This fails the same silent way as the API mismatch above.
 
 ## A note on `hmUI.show_level.ONAL_AOD`
 

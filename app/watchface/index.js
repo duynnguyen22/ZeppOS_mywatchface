@@ -299,10 +299,17 @@ WatchFace({
         forecast.forecastData.data[0]
 
       // Verified on-device: today's forecast entry is only
-      // { high, low, index } - there is no current-temperature field
-      // anywhere in Weather.getForecast(), so the current-temp readout
-      // always degrades to '--'.
-      tempText.setProperty(hmUI.prop.TEXT, formatTemp(undefined))
+      // Weather.getForecast() is the only weather API, and in the simulator
+      // today's entry is { high, low, index } with no current-temperature
+      // field. Real firmware may expose one under a different name, so try
+      // the plausible spellings before giving up; formatTemp renders '--°'
+      // when none is present rather than printing "undefined".
+      const currentTemp = today
+        ? (today.current !== undefined ? today.current
+          : today.temp !== undefined ? today.temp
+          : today.temperature)
+        : undefined
+      tempText.setProperty(hmUI.prop.TEXT, formatTemp(currentTemp))
       if (today) {
         hiloText.setProperty(
           hmUI.prop.TEXT,
