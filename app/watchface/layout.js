@@ -56,7 +56,10 @@ const RECT = {
   BATTERY_ICON: { x: 352, y: 78, w: 34, h: 20 },
   BATTERY_TEXT: { x: 330, y: 100, w: 66, h: 24 },
   TIME: { x: 40, y: 118, w: 340, h: 84 },
-  MERIDIEM: { x: 388, y: 156, w: 44, h: 26 },
+  // The minute is left-aligned from the centre of TIME, so it always ends
+  // near x=294 whether the hour is one or two digits. The suffix sits just
+  // past that; x=388 left a ~94px gap once the face moved to 12-hour time.
+  MERIDIEM: { x: 302, y: 158, w: 46, h: 26 },
   TAGLINE: { x: 53, y: 204, w: 360, h: 24 },
   PILL: { x: 86, y: 343, w: 294, h: 59 },
 }

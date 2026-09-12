@@ -29,7 +29,13 @@ WatchFace({
   build() {
     const isAod = getScene() === SCENE_AOD
     const time = new Time()
-    const is12h = time.getHourFormat() === TIME_HOUR_FORMAT_12
+
+    // The reference design shows 12-hour time with an AM/PM suffix, so the
+    // face uses 12-hour regardless of the watch's own 24-hour setting —
+    // otherwise there is no meridiem to display and the suffix stays blank.
+    // Set this to `time.getHourFormat() === TIME_HOUR_FORMAT_12` instead to
+    // follow the system setting.
+    const is12h = true
 
     // Background: the artwork in normal mode, a flat fill in AOD.
     if (isAod) {
