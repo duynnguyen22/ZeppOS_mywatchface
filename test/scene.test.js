@@ -161,3 +161,27 @@ test('extreme values do not shift the layout', () => {
     )
   }
 })
+
+test('nothing overlaps the time glyphs', () => {
+  // The side taglines used to sit here and collided with the digits at a
+  // two-digit hour. The time has to dominate, so anything that lands on
+  // top of it is a defect rather than a matter of taste.
+  const overlaps = (a, b) =>
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+
+  for (const hour of [1, 9, 10, 12, 23]) {
+    const els = buildScene({ ...FULL, hour })
+    const glyphs = els.filter((e) => e.key && e.key.startsWith('time.') && e.src)
+    for (const other of els) {
+      if (other.key && other.key.startsWith('time.')) continue
+      if (other.src === 'images/bg.png') continue
+      if (other.key && other.key.startsWith('arc.')) continue // transparent boxes
+      for (const glyph of glyphs) {
+        assert.ok(
+          !overlaps(glyph, other),
+          `${other.key || other.text || other.src} overlaps the time at hour ${hour}`
+        )
+      }
+    }
+  }
+})

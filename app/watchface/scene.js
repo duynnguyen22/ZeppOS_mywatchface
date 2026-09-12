@@ -159,9 +159,8 @@ function createScene(env) {
     'center', 0, 'kcal.value'))
   els.push(text(RECT.KCAL_LABEL, 'kcal', TYPE.METRIC_UNIT, COLOR.SECONDARY, 'center', TRACKING))
 
-  // Layer 8: the static taglines.
-  els.push(...taglineBlock(RECT.TAGLINE_L, TAGLINE.LEFT, 'left'))
-  els.push(...taglineBlock(RECT.TAGLINE_R, TAGLINE.RIGHT, 'right'))
+  // Layer 8: the one static tagline. The side blocks were removed - they
+  // crowded the time, which the hierarchy says must dominate.
   els.push(...taglineBlock(RECT.TAGLINE_B, TAGLINE.BOTTOM, 'center'))
 
   return els

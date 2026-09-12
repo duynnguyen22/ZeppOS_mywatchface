@@ -37,10 +37,9 @@ const GOAL = {
 const NO_VALUE = '--'
 
 // Static decoration. Kept here so the words can change without touching
-// layout or widget code.
+// layout or widget code. The blocks that used to flank the time are gone:
+// at this type size they ran into the digits, and the time has to win.
 const TAGLINE = {
-  LEFT: ['JUST', 'A BIT', 'BETTER'],
-  RIGHT: ['GOOD', 'THINGS', 'AHEAD'],
   BOTTOM: ['SMALL STEPS', 'BIG CHANGE'],
 }
 

@@ -64,8 +64,6 @@ const RECT = {
   TIME: { x: 38, y: 158, w: 390, h: 84 },
   DATE: { x: 143, y: 255, w: 180, h: 24 },
 
-  TAGLINE_L: { x: 28, y: 207, w: 66, h: 42 },
-  TAGLINE_R: { x: 372, y: 207, w: 66, h: 42 },
   TAGLINE_B: { x: 143, y: 396, w: 180, h: 26 },
 
   // Value and label boxes are sized to the measured text bounds, not
