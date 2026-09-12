@@ -1,3 +1,16 @@
+import * as hmUI from '@zos/ui'
+import { getScene, SCENE_AOD, SCENE_WATCHFACE } from '@zos/app'
+import {
+  Time,
+  Battery,
+  Step,
+  HeartRate,
+  Calorie,
+  Distance,
+  Weather,
+  TIME_HOUR_FORMAT_12,
+} from '@zos/sensor'
+
 import * as tokens from './tokens.js'
 import * as layout from './layout.js'
 import * as fmt from './format.js'
@@ -14,9 +27,9 @@ const IMG = 'images/'
 
 WatchFace({
   build() {
-    const isAod = hmSetting.getScreenType() === hmSetting.screen_type.AOD
-    const is12h = hmSetting.getTimeFormat() === 0
-    const timeSensor = hmSensor.createSensor(hmSensor.id.TIME)
+    const isAod = getScene() === SCENE_AOD
+    const time = new Time()
+    const is12h = time.getHourFormat() === TIME_HOUR_FORMAT_12
 
     // Background: the artwork in normal mode, a flat fill in AOD.
     if (isAod) {
@@ -97,7 +110,11 @@ WatchFace({
     }
 
     const updateTime = () => {
-      const { hour = 0, minute = 0, week = 1, month = 1, day = 1 } = timeSensor
+      const hour = time.getHours()
+      const minute = time.getMinutes()
+      const week = time.getDay()
+      const month = time.getMonth()
+      const day = time.getDate()
       // The colon rides with the hour so the pair stays optically centred.
       hourText.setProperty(hmUI.prop.TEXT, formatHour(hour, is12h) + ':')
       minuteText.setProperty(hmUI.prop.TEXT, formatMinute(minute))
@@ -109,11 +126,11 @@ WatchFace({
 
     hmUI.createWidget(hmUI.widget.WIDGET_DELEGATE, {
       resume_call: () => {
-        timeSensor.addEventListener(timeSensor.event.MINUTEEND, updateTime)
+        time.onPerMinute(updateTime)
         updateTime()
       },
       pause_call: () => {
-        timeSensor.removeEventListener(timeSensor.event.MINUTEEND, updateTime)
+        time.offPerMinute(updateTime)
       },
     })
 
@@ -126,12 +143,12 @@ WatchFace({
 
     const normal = hmUI.show_level.ONLY_NORMAL
 
-    const batterySensor = hmSensor.createSensor(hmSensor.id.BATTERY)
-    const stepSensor = hmSensor.createSensor(hmSensor.id.STEP)
-    const heartSensor = hmSensor.createSensor(hmSensor.id.HEART)
-    const calorieSensor = hmSensor.createSensor(hmSensor.id.CALORIE)
-    const weatherSensor = hmSensor.createSensor(hmSensor.id.WEATHER)
-    const distanceSensor = hmSensor.createSensor(hmSensor.id.DISTANCE)
+    const batterySensor = new Battery()
+    const stepSensor = new Step()
+    const heartSensor = new HeartRate()
+    const calorieSensor = new Calorie()
+    const weatherSensor = new Weather()
+    const distanceSensor = new Distance()
 
     // Weather icon: a simple sun disc, drawn the same way as the stat-card
     // accent icons and the pill icon (a FILL_RECT with radius = half the
@@ -254,17 +271,38 @@ WatchFace({
       text: '', show_level: normal,
     })
 
+    const safeCurrent = (sensor) => {
+      try {
+        return sensor.getCurrent()
+      } catch (e) {
+        return null
+      }
+    }
+
     const updateData = () => {
-      const battery = batterySensor.current
+      const battery = safeCurrent(batterySensor)
       batteryText.setProperty(hmUI.prop.TEXT, formatBattery(battery))
       batteryFill.setProperty(hmUI.prop.MORE, {
         w: Math.max(1, Math.round(((RECT.BATTERY_ICON.w - 10) * Math.max(0, Math.min(100, battery || 0))) / 100)),
       })
 
-      tempText.setProperty(hmUI.prop.TEXT, formatTemp(weatherSensor.current))
+      let forecast = null
+      try {
+        forecast = weatherSensor.getForecast()
+      } catch (e) {
+        forecast = null
+      }
+      const today =
+        forecast &&
+        forecast.forecastData &&
+        forecast.forecastData.data &&
+        forecast.forecastData.data[0]
 
-      const forecast = weatherSensor.getForecastWeather()
-      const today = forecast && forecast.data && forecast.data[0]
+      // Verified on-device: today's forecast entry is only
+      // { high, low, index } - there is no current-temperature field
+      // anywhere in Weather.getForecast(), so the current-temp readout
+      // always degrades to '--'.
+      tempText.setProperty(hmUI.prop.TEXT, formatTemp(undefined))
       if (today) {
         hiloText.setProperty(
           hmUI.prop.TEXT,
@@ -272,14 +310,15 @@ WatchFace({
         )
       }
 
-      cards[0].setProperty(hmUI.prop.TEXT, formatSteps(stepSensor.current))
-      cards[1].setProperty(hmUI.prop.TEXT, formatHeart(heartSensor.last))
-      cards[2].setProperty(hmUI.prop.TEXT, formatCalories(calorieSensor.current))
+      cards[0].setProperty(hmUI.prop.TEXT, formatSteps(safeCurrent(stepSensor)))
+      cards[1].setProperty(hmUI.prop.TEXT, formatHeart(safeCurrent(heartSensor)))
+      cards[2].setProperty(hmUI.prop.TEXT, formatCalories(safeCurrent(calorieSensor)))
 
-      // Unit assumption: DISTANCE.current is assumed to be metres, hence
-      // the /1000 below. This is unverified without real hardware - if the
-      // on-device reading is off by 1000x, this is the line to change.
-      const distanceMeters = distanceSensor.current
+      // Unit assumption: DISTANCE.getCurrent() is assumed to be metres,
+      // hence the /1000 below. This is unverified without real hardware -
+      // if the on-device reading is off by 1000x, this is the line to
+      // change.
+      const distanceMeters = safeCurrent(distanceSensor)
       pillDetail.setProperty(
         hmUI.prop.TEXT,
         distanceMeters === null || distanceMeters === undefined
@@ -293,15 +332,15 @@ WatchFace({
     let dataTimer = null
     hmUI.createWidget(hmUI.widget.WIDGET_DELEGATE, {
       resume_call: () => {
-        if (hmSetting.getScreenType() === hmSetting.screen_type.WATCHFACE) {
-          dataTimer = timer.createTimer(10000, 10000, updateData)
+        if (getScene() === SCENE_WATCHFACE) {
+          dataTimer = setInterval(updateData, 10000)
           updateData()
         }
       },
       pause_call: () => {
         // Not stopping this drains the battery.
         if (dataTimer !== null) {
-          timer.stopTimer(dataTimer)
+          clearInterval(dataTimer)
           dataTimer = null
         }
       },
