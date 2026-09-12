@@ -3,8 +3,12 @@ import * as layout from './layout.js'
 import * as fmt from './format.js'
 
 const { COLOR, TYPE } = tokens
-const { RECT } = layout
-const { formatHour, formatMinute, meridiem, formatDate } = fmt
+const { RECT, statCard, CARD_INSET, CHART } = layout
+const {
+  formatHour, formatMinute, meridiem, formatDate,
+  formatSteps, formatBattery, formatTemp, formatHiLo,
+  formatHeart, formatCalories, formatDistance, formatDuration,
+} = fmt
 
 const IMG = 'images/'
 
@@ -116,8 +120,177 @@ WatchFace({
     this.buildComplications(isAod)
   },
 
-  // Filled in by Task 7.
-  buildComplications() {},
+  buildComplications(isAod) {
+    // Everything here is normal-screen only; AOD stays minimal for battery.
+    if (isAod) return
+
+    const normal = hmUI.show_level.ONLY_NORMAL
+
+    const batterySensor = hmSensor.createSensor(hmSensor.id.BATTERY)
+    const stepSensor = hmSensor.createSensor(hmSensor.id.STEP)
+    const heartSensor = hmSensor.createSensor(hmSensor.id.HEART)
+    const calorieSensor = hmSensor.createSensor(hmSensor.id.CALORIE)
+    const weatherSensor = hmSensor.createSensor(hmSensor.id.WEATHER)
+
+    const tempText = hmUI.createWidget(hmUI.widget.TEXT, {
+      x: RECT.TEMP.x, y: RECT.TEMP.y, w: RECT.TEMP.w, h: RECT.TEMP.h,
+      color: COLOR.WHITE, text_size: TYPE.TEMP,
+      align_h: hmUI.align.LEFT, align_v: hmUI.align.CENTER_V,
+      text: '', show_level: normal,
+    })
+
+    const hiloText = hmUI.createWidget(hmUI.widget.TEXT, {
+      x: RECT.HILO.x, y: RECT.HILO.y, w: RECT.HILO.w, h: RECT.HILO.h,
+      color: COLOR.MUTED, text_size: TYPE.HILO,
+      align_h: hmUI.align.LEFT, align_v: hmUI.align.CENTER_V,
+      text: '', show_level: normal,
+    })
+
+    const batteryText = hmUI.createWidget(hmUI.widget.TEXT, {
+      x: RECT.BATTERY_TEXT.x, y: RECT.BATTERY_TEXT.y,
+      w: RECT.BATTERY_TEXT.w, h: RECT.BATTERY_TEXT.h,
+      color: COLOR.WHITE, text_size: TYPE.BATTERY,
+      align_h: hmUI.align.RIGHT, align_v: hmUI.align.CENTER_V,
+      text: '', show_level: normal,
+    })
+
+    // Battery icon drawn as a rounded outline plus a fill bar.
+    hmUI.createWidget(hmUI.widget.STROKE_RECT, {
+      x: RECT.BATTERY_ICON.x, y: RECT.BATTERY_ICON.y,
+      w: RECT.BATTERY_ICON.w - 4, h: RECT.BATTERY_ICON.h,
+      radius: 4, line_width: 2, color: COLOR.MUTED, show_level: normal,
+    })
+    const batteryFill = hmUI.createWidget(hmUI.widget.FILL_RECT, {
+      x: RECT.BATTERY_ICON.x + 3, y: RECT.BATTERY_ICON.y + 3,
+      w: 1, h: RECT.BATTERY_ICON.h - 6,
+      radius: 2, color: COLOR.MINT, show_level: normal,
+    })
+
+    // Stat cards: steps, heart rate, calories.
+    const cards = [
+      { label: 'steps', color: COLOR.MINT },
+      { label: 'bpm', color: COLOR.CORAL },
+      { label: 'kcal', color: COLOR.AMBER },
+    ].map((config, index) => {
+      const box = statCard(index)
+
+      hmUI.createWidget(hmUI.widget.FILL_RECT, {
+        x: box.x, y: box.y, w: box.w, h: box.h,
+        radius: 18, color: COLOR.CARD_BG, show_level: normal,
+      })
+
+      // Accent dot standing in for the reference's glyph.
+      hmUI.createWidget(hmUI.widget.FILL_RECT, {
+        x: box.x + CARD_INSET.ICON.dx, y: box.y + CARD_INSET.ICON.dy,
+        w: CARD_INSET.ICON.w, h: CARD_INSET.ICON.h,
+        radius: 11, color: config.color, show_level: normal,
+      })
+
+      const value = hmUI.createWidget(hmUI.widget.TEXT, {
+        x: box.x + CARD_INSET.VALUE.dx, y: box.y + CARD_INSET.VALUE.dy,
+        w: CARD_INSET.VALUE.w, h: CARD_INSET.VALUE.h,
+        color: COLOR.WHITE, text_size: TYPE.STAT_VALUE,
+        align_h: hmUI.align.LEFT, align_v: hmUI.align.CENTER_V,
+        text: '', show_level: normal,
+      })
+
+      hmUI.createWidget(hmUI.widget.TEXT, {
+        x: box.x + CARD_INSET.LABEL.dx, y: box.y + CARD_INSET.LABEL.dy,
+        w: CARD_INSET.LABEL.w, h: CARD_INSET.LABEL.h,
+        color: COLOR.MUTED, text_size: TYPE.STAT_LABEL,
+        align_h: hmUI.align.LEFT, align_v: hmUI.align.CENTER_V,
+        text: config.label, show_level: normal,
+      })
+
+      // Decorative bars. The watchface API exposes no per-hour history for
+      // these metrics, so these are intentionally static, not live data.
+      const heights = [7, 11, 9, 15, 12, 18, 10, 14, 8]
+      for (let bar = 0; bar < CHART.bars; bar++) {
+        const height = heights[bar]
+        hmUI.createWidget(hmUI.widget.FILL_RECT, {
+          x: box.x + CARD_INSET.CHART.dx + bar * (CHART.barW + CHART.gap),
+          y: box.y + CARD_INSET.CHART.dy + (CARD_INSET.CHART.h - height),
+          w: CHART.barW,
+          h: height,
+          radius: 2,
+          color: config.color,
+          show_level: normal,
+        })
+      }
+
+      return value
+    })
+
+    // Activity pill. Static display only - watch faces cannot launch
+    // workouts, so there is deliberately no tap handler and no chevron.
+    hmUI.createWidget(hmUI.widget.FILL_RECT, {
+      x: RECT.PILL.x, y: RECT.PILL.y, w: RECT.PILL.w, h: RECT.PILL.h,
+      radius: 30, color: COLOR.CARD_BG, show_level: normal,
+    })
+    hmUI.createWidget(hmUI.widget.FILL_RECT, {
+      x: RECT.PILL.x + 12, y: RECT.PILL.y + 12, w: 35, h: 35,
+      radius: 18, color: COLOR.MINT, show_level: normal,
+    })
+    hmUI.createWidget(hmUI.widget.TEXT, {
+      x: RECT.PILL.x + 60, y: RECT.PILL.y + 8, w: 200, h: 26,
+      color: COLOR.WHITE, text_size: TYPE.PILL_TITLE,
+      align_h: hmUI.align.LEFT, align_v: hmUI.align.CENTER_V,
+      text: 'Outdoor Run', show_level: normal,
+    })
+    const pillDetail = hmUI.createWidget(hmUI.widget.TEXT, {
+      x: RECT.PILL.x + 60, y: RECT.PILL.y + 32, w: 200, h: 22,
+      color: COLOR.MUTED, text_size: TYPE.PILL_DETAIL,
+      align_h: hmUI.align.LEFT, align_v: hmUI.align.CENTER_V,
+      text: '', show_level: normal,
+    })
+
+    const updateData = () => {
+      const battery = batterySensor.current
+      batteryText.setProperty(hmUI.prop.TEXT, formatBattery(battery))
+      batteryFill.setProperty(hmUI.prop.MORE, {
+        w: Math.max(1, Math.round(((RECT.BATTERY_ICON.w - 10) * Math.max(0, Math.min(100, battery || 0))) / 100)),
+      })
+
+      tempText.setProperty(hmUI.prop.TEXT, formatTemp(weatherSensor.current))
+
+      const forecast = weatherSensor.getForecastWeather()
+      const today = forecast && forecast.data && forecast.data[0]
+      if (today) {
+        hiloText.setProperty(
+          hmUI.prop.TEXT,
+          formatHiLo(today.high, today.low)
+        )
+      }
+
+      cards[0].setProperty(hmUI.prop.TEXT, formatSteps(stepSensor.current))
+      cards[1].setProperty(hmUI.prop.TEXT, formatHeart(heartSensor.last))
+      cards[2].setProperty(hmUI.prop.TEXT, formatCalories(calorieSensor.current))
+
+      pillDetail.setProperty(
+        hmUI.prop.TEXT,
+        `${formatDistance(2.5)} · ${formatDuration(24)}`
+      )
+    }
+
+    updateData()
+
+    let dataTimer = null
+    hmUI.createWidget(hmUI.widget.WIDGET_DELEGATE, {
+      resume_call: () => {
+        if (hmSetting.getScreenType() === hmSetting.screen_type.WATCHFACE) {
+          dataTimer = timer.createTimer(10000, 10000, updateData)
+          updateData()
+        }
+      },
+      pause_call: () => {
+        // Not stopping this drains the battery.
+        if (dataTimer !== null) {
+          timer.stopTimer(dataTimer)
+          dataTimer = null
+        }
+      },
+    })
+  },
 
   onInit() {},
   onDestroy() {},
