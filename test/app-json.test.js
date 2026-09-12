@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const config = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '..', 'app.json'), 'utf8')
+  fs.readFileSync(path.join(__dirname, '..', 'app', 'app.json'), 'utf8')
 )
 
 const ROUND_SOURCES = [

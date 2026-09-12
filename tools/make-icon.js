@@ -1,7 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { encodePNG } = require('./png.js')
-const { COLOR } = require('../watchface/tokens.js')
+const { COLOR } = require('../app/watchface/tokens.js')
 
 const W = 192
 const H = 192
@@ -36,7 +36,7 @@ for (let y = 0; y < H; y++) {
   }
 }
 
-const outDir = path.join(__dirname, '..', 'assets', 'active-2-round', 'images')
+const outDir = path.join(__dirname, '..', 'app', 'assets', 'active-2-round', 'images')
 fs.mkdirSync(outDir, { recursive: true })
 const outPath = path.join(outDir, 'icon.png')
 fs.writeFileSync(outPath, encodePNG(W, H, pixels))

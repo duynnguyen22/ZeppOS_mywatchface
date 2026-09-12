@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { COLOR, TYPE } = require('../watchface/tokens.js')
+const { COLOR, TYPE } = require('../app/watchface/tokens.js')
 
 test('every colour is a 24-bit integer', () => {
   for (const [name, value] of Object.entries(COLOR)) {

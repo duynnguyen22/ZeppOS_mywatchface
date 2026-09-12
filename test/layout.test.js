@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { SCREEN, CENTER, RADIUS, polar, fitsOnFace, RECT, statCard } = require('../watchface/layout.js')
+const { SCREEN, CENTER, RADIUS, polar, fitsOnFace, RECT, statCard } = require('../app/watchface/layout.js')
 
 function close(actual, expected, tol = 0.001) {
   assert.ok(Math.abs(actual - expected) <= tol, `${actual} != ${expected}`)

@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const f = require('../watchface/format.js')
+const f = require('../app/watchface/format.js')
 
 test('pad2 pads and preserves', () => {
   assert.strictEqual(f.pad2(0), '00')

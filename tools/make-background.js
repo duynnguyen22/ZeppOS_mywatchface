@@ -90,7 +90,7 @@ for (let y = 0; y < H; y++) {
   }
 }
 
-const outDir = path.join(__dirname, '..', 'assets', 'active-2-round', 'images')
+const outDir = path.join(__dirname, '..', 'app', 'assets', 'active-2-round', 'images')
 fs.mkdirSync(outDir, { recursive: true })
 const outPath = path.join(outDir, 'bg.png')
 fs.writeFileSync(outPath, encodePNG(W, H, pixels))
