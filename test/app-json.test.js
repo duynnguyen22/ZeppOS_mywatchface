@@ -54,3 +54,16 @@ test('watchface entry path is declared', () => {
   assert.strictEqual(wf.path, 'watchface/index')
   assert.strictEqual(wf.main, 1)
 })
+
+test('permissions match the sensors the face actually reads', () => {
+  // An undeclared sensor throws PERMISSION DENIED on construction and the
+  // metric silently stays empty; a declared-but-unused one asks the wearer
+  // for access the face never needs. Both are defects.
+  const declared = new Set(config.permissions)
+  assert.ok(declared.has('data:user.hd.step'), 'steps ring needs the step permission')
+  assert.ok(declared.has('data:user.hd.calorie'), 'kcal ring needs the calorie permission')
+  assert.ok(declared.has('data:user.hd.heart_rate'), 'the bpm dial needs the heart rate permission')
+  for (const gone of ['data:user.hd.weather', 'data:user.hd.distance', 'data:user.hd.stress']) {
+    assert.ok(!declared.has(gone), `${gone} is no longer read by this face`)
+  }
+})

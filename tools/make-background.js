@@ -1,132 +1,122 @@
-// Generates the 466x466 landscape backdrop. Deterministic and
-// dependency-free - only node:zlib via ./png.js.
+// Generates the static chrome: everything on the face that never changes.
 //
-// The composition is driven by WHAT IS ACTUALLY VISIBLE. The stat cards are
-// opaque and cover y 234..322, and the activity pill covers y 343..402, so
-// the lower half of the face is almost entirely hidden. An earlier version
-// put the horizon at y=300 with a mirrored-sun streak below it; both sat
-// behind the cards and showed only as a pale smear leaking around their
-// edges. The horizon now sits just above the cards, and there is no water
-// reflection, because there is no visible water to reflect in.
+// Why this is one image rather than widgets: the ring, the ticks and the
+// decorative arcs are all off-axis, and this runtime has no verified
+// primitive for drawing an angled line or an arbitrary arc. Nothing
+// dynamic lives here - every value that changes is a live widget drawn on
+// top - so baking the static geometry costs no interactivity.
+//
+// Restraint is the brief: these marks are atmosphere and structure, not
+// information. They must not compete with the time.
 
 const fs = require('node:fs')
 const path = require('node:path')
 const { encodePNG } = require('./png.js')
+const {
+  Canvas, fillArc, fillRoundRect, downsample,
+} = require('./draw.js')
+const { COLOR } = require('../app/watchface/tokens.js')
+const { SCREEN, CENTER, GAUGE } = require('../app/watchface/layout.js')
 
-const W = 466
-const H = 466
-const CX = 233
-const CY = 233
-const R = 233
+const SS = 3
+const W = SCREEN.width
+const Hh = SCREEN.height
 
-// Just above the top edge of the stat cards (y = 234).
-const HORIZON = 232
+const big = new Canvas(W * SS, Hh * SS)
+const CX = CENTER.x * SS
+const CY = CENTER.y * SS
 
-// Sun sits low and to the right, settling into the ridge line the way it
-// does in the reference, rather than floating at the same height as the
-// time where it competes with the digits for attention. Kept clear of the
-// stat cards (which start at y = 234).
-const SUN = { x: 372, y: 195, r: 19, halo: 34 }
-
-function lerp(a, b, t) {
-  return a + (b - a) * t
-}
-
-function clamp01(v) {
-  return v < 0 ? 0 : v > 1 ? 1 : v
-}
-
-// Deterministic layered silhouette. Three sine terms give a ridge that
-// reads as terrain rather than a single wave.
-function ridge(x, seed, amplitude, base) {
-  return (
-    base -
-    amplitude *
-      (0.6 * Math.sin(x * 0.013 + seed) +
-        0.3 * Math.sin(x * 0.031 + seed * 2.1) +
-        0.1 * Math.sin(x * 0.071 + seed * 3.7))
+// Thin concentric circle, in whole-face coordinates.
+function ring(radius, thickness, color, alpha, from = 0, to = 359.99) {
+  fillArc(
+    big, CX, CY,
+    (radius - thickness / 2) * SS, (radius + thickness / 2) * SS,
+    from, to, color, alpha
   )
 }
 
-// Far ridges are LIGHTER than near ones. That is atmospheric perspective,
-// and it is what makes the layers separate instead of merging into one dark
-// mass - the previous version darkened them front-to-back, which flattened
-// the whole scene.
-const RIDGES = [
-  { seed: 1.0, amplitude: 20, base: 196, color: [0x14, 0x3c, 0x44] },
-  { seed: 2.4, amplitude: 26, base: 213, color: [0x0c, 0x2b, 0x33] },
-  { seed: 4.1, amplitude: 16, base: 230, color: [0x05, 0x18, 0x1e] },
-]
-
-const pixels = Buffer.alloc(W * H * 4)
-
-function set(x, y, r, g, b) {
-  const i = (y * W + x) * 4
-  pixels[i] = r
-  pixels[i + 1] = g
-  pixels[i + 2] = b
-  pixels[i + 3] = 255
+// A radial tick: a slice of a ring band at one angle.
+function tick(deg, rFrom, rTo, widthDeg, color, alpha) {
+  fillArc(big, CX, CY, rFrom * SS, rTo * SS, deg - widthDeg / 2, deg + widthDeg / 2, color, alpha)
 }
 
-for (let y = 0; y < H; y++) {
-  for (let x = 0; x < W; x++) {
-    // Outside the circular face - the bezel masks this anyway.
-    if (Math.hypot(x - CX, y - CY) > R) {
-      set(x, y, 0, 0, 0)
-      continue
-    }
+// An arc belonging to a gauge, in that gauge's own coordinate system.
+function gaugeArc(g, from, span, color, alpha, caps) {
+  fillArc(
+    big, g.cx * SS, g.cy * SS, g.rInner * SS, g.rOuter * SS,
+    ((from % 360) + 360) % 360, ((from + span) % 360 + 360) % 360,
+    color, alpha, caps
+  )
+}
 
-    let r, g, b
+// --- Layer 2: the outer technical ring --------------------------------
+ring(218, 1, COLOR.CHROME, 210)
 
-    if (y < HORIZON) {
-      // Sky: deep at the crown, lifting toward the horizon.
-      const t = clamp01(y / HORIZON)
-      r = lerp(0x02, 0x0e, t)
-      g = lerp(0x14, 0x3e, t)
-      b = lerp(0x1a, 0x49, t)
+// --- Layer 3: sparse secondary geometry -------------------------------
+// Four arc segments rather than a second full circle - the guideline is
+// explicit that a dense concentric scale is the failure mode here.
+for (const from of [24, 114, 204, 294]) ring(196, 1, COLOR.CHROME, 150, from, from + 48)
 
-      // Sun: a crisp disc with a tight halo, rather than a wide soft bloom.
-      const d = Math.hypot(x - SUN.x, y - SUN.y)
-      if (d < SUN.halo) {
-        const halo = Math.pow(clamp01(1 - (d - SUN.r) / (SUN.halo - SUN.r)), 2) * 0.34
-        r = lerp(r, 0xf2, halo)
-        g = lerp(g, 0xd0, halo)
-        b = lerp(b, 0x89, halo)
-      }
-      if (d < SUN.r) {
-        // Solid core, with only the outermost pixel softened so the edge
-        // reads as a disc and not as a gradient.
-        const edge = clamp01((SUN.r - d) / 2)
-        r = lerp(r, 0xf7, edge)
-        g = lerp(g, 0xdd, edge)
-        b = lerp(b, 0xa4, edge)
-      }
+// Two dim accent arcs, upper left and upper right, echoing the reference.
+ring(207, 1.5, COLOR.ACCENT, 70, 296, 340)
+ring(207, 1.5, COLOR.ACCENT, 70, 20, 64)
 
-      // Ridges, far to near. Drawn after the sun so the nearer ranges
-      // occlude it, the way the reference has the sun settling behind them.
-      for (const item of RIDGES) {
-        if (y > ridge(x, item.seed, item.amplitude, item.base)) {
-          r = item.color[0]
-          g = item.color[1]
-          b = item.color[2]
-        }
-      }
-    } else {
-      // Below the horizon is almost entirely covered by the stat cards and
-      // the pill. Keep it a quiet dark gradient - anything bright here only
-      // leaks around the cards' rounded corners.
-      const t = clamp01((y - HORIZON) / (H - HORIZON))
-      r = lerp(0x05, 0x01, t)
-      g = lerp(0x16, 0x07, t)
-      b = lerp(0x1c, 0x0b, t)
-    }
+// Cardinal markers only. Twelve of these would be a clock scale.
+for (const deg of [0, 180]) tick(deg, 205, 219, 0.5, COLOR.SECONDARY, 200)
+for (const deg of [90, 270]) tick(deg, 209, 219, 0.5, COLOR.SECONDARY, 130)
 
-    set(x, y, Math.round(r), Math.round(g), Math.round(b))
+// Small asymmetric brackets at the flanks - technical punctuation.
+for (const deg of [270, 90]) {
+  tick(deg - 11, 200, 214, 0.4, COLOR.SECONDARY, 110)
+  tick(deg + 11, 200, 214, 0.4, COLOR.SECONDARY, 110)
+  ring(200, 1, COLOR.SECONDARY, 110, deg - 11, deg + 11)
+}
+
+// --- Layer 4: the unfilled gauge tracks -------------------------------
+gaugeArc(GAUGE.BATTERY, GAUGE.BATTERY.start, GAUGE.BATTERY.span, COLOR.CHROME, 255, true)
+for (const key of ['STEPS', 'KCAL']) {
+  const g = GAUGE[key]
+  gaugeArc(g, 0, 359.99, COLOR.CHROME, 190) // a full circle behind each ring
+}
+
+// The bpm dial's unlit ticks: fine hairlines, deliberately much lighter
+// than the bold dashes that light up over them.
+{
+  const g = GAUGE.HR
+  const step = g.span / g.dashes
+  for (let i = 0; i < g.dashes; i++) {
+    gaugeArc(g, g.start + i * step, step * 0.3, COLOR.CHROME, 235)
   }
+}
+
+// --- Layer 8: micro indicators ----------------------------------------
+// Hairline rules flanking the middle dial.
+for (const x of [189, 276]) {
+  fillRoundRect(big, x * SS, 317 * SS, 1 * SS, 35 * SS, 0, COLOR.CHROME, 220)
+}
+// The small double dash above the bottom tagline.
+fillRoundRect(big, 225 * SS, 382 * SS, 16 * SS, 1 * SS, 0, COLOR.SECONDARY, 120)
+fillRoundRect(big, 227 * SS, 388 * SS, 12 * SS, 1 * SS, 0, COLOR.SECONDARY, 90)
+
+// Shallow arcs sweeping under the metric row, closing the composition.
+ring(150, 1, COLOR.CHROME, 170, 148, 176)
+ring(150, 1, COLOR.CHROME, 170, 184, 212)
+
+// --- Flatten onto black -----------------------------------------------
+// The face is composited over an opaque black ground: unlit AMOLED pixels.
+const small = downsample(big, SS)
+const out = Buffer.alloc(W * Hh * 4)
+for (let i = 0; i < W * Hh; i++) {
+  const a = small.data[i * 4 + 3] / 255
+  out[i * 4] = Math.round(small.data[i * 4] * a)
+  out[i * 4 + 1] = Math.round(small.data[i * 4 + 1] * a)
+  out[i * 4 + 2] = Math.round(small.data[i * 4 + 2] * a)
+  out[i * 4 + 3] = 255
 }
 
 const outDir = path.join(__dirname, '..', 'app', 'assets', 'active-2-round', 'images')
 fs.mkdirSync(outDir, { recursive: true })
 const outPath = path.join(outDir, 'bg.png')
-fs.writeFileSync(outPath, encodePNG(W, H, pixels))
-console.log(`wrote ${outPath}`)
+const png = encodePNG(W, Hh, out)
+fs.writeFileSync(outPath, png)
+console.log(`wrote ${outPath} (${(png.length / 1024).toFixed(1)} KB)`)

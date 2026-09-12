@@ -1,129 +1,90 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const f = require('../app/watchface/format.js')
+const {
+  WEEKDAYS, NO_VALUE, pad2, formatHour, formatMinute, formatDate,
+  formatSteps, formatBattery, formatMetric,
+} = require('../app/watchface/format.js')
 
-test('pad2 pads and preserves', () => {
-  assert.strictEqual(f.pad2(0), '00')
-  assert.strictEqual(f.pad2(7), '07')
-  assert.strictEqual(f.pad2(42), '42')
+test('pad2 pads single digits and leaves doubles alone', () => {
+  assert.strictEqual(pad2(7), '07')
+  assert.strictEqual(pad2(23), '23')
 })
 
-test('formatHour in 24-hour mode pads', () => {
-  assert.strictEqual(f.formatHour(0, false), '00')
-  assert.strictEqual(f.formatHour(9, false), '09')
-  assert.strictEqual(f.formatHour(23, false), '23')
+test('formatHour in 24-hour mode pads to two digits', () => {
+  assert.strictEqual(formatHour(9, false), '09')
+  assert.strictEqual(formatHour(17, false), '17')
 })
 
-test('formatHour in 12-hour mode has no leading zero', () => {
-  assert.strictEqual(f.formatHour(13, true), '1')
-  assert.strictEqual(f.formatHour(9, true), '9')
+test('formatHour in 12-hour mode drops the leading zero', () => {
+  assert.strictEqual(formatHour(9, true), '9')
+  assert.strictEqual(formatHour(17, true), '5')
 })
 
-test('formatHour maps midnight and noon to 12', () => {
-  assert.strictEqual(f.formatHour(0, true), '12')
-  assert.strictEqual(f.formatHour(12, true), '12')
+test('formatHour renders both midnight and noon as 12, not 0', () => {
+  assert.strictEqual(formatHour(0, true), '12')
+  assert.strictEqual(formatHour(12, true), '12')
 })
 
 test('formatMinute always pads', () => {
-  assert.strictEqual(f.formatMinute(8), '08')
-  assert.strictEqual(f.formatMinute(59), '59')
+  assert.strictEqual(formatMinute(5), '05')
+  assert.strictEqual(formatMinute(41), '41')
 })
 
-test('meridiem splits at noon', () => {
-  assert.strictEqual(f.meridiem(0), 'AM')
-  assert.strictEqual(f.meridiem(11), 'AM')
-  assert.strictEqual(f.meridiem(12), 'PM')
-  assert.strictEqual(f.meridiem(23), 'PM')
+test('formatDate renders weekday and day, matching the reference', () => {
+  assert.strictEqual(formatDate(6, 12), 'SAT · 12')
 })
 
-test('formatDate renders uppercase weekday and month', () => {
-  assert.strictEqual(f.formatDate(2, 9, 12), 'TUE, SEP 12')
-  assert.strictEqual(f.formatDate(7, 1, 1), 'SUN, JAN 1')
+test('formatDate maps all seven weekdays, Monday first', () => {
+  // The platform's Time.getDay() is 1-7 starting Monday. Getting this
+  // backwards shows the wrong day every day, which is easy to miss.
+  const got = [1, 2, 3, 4, 5, 6, 7].map((w) => formatDate(w, 1).split(' ')[0])
+  assert.deepStrictEqual(got, WEEKDAYS)
 })
 
-test('formatDate maps all seven weekdays correctly', () => {
-  const weekdayLiterals = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
-  for (let week = 1; week <= 7; week++) {
-    const out = f.formatDate(week, 3, 15)
-    assert.strictEqual(out, `${weekdayLiterals[week - 1]}, MAR 15`, `week ${week} mapping wrong`)
-  }
-})
-
-test('formatDate maps all twelve months correctly', () => {
-  const monthLiterals = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
-  for (let month = 1; month <= 12; month++) {
-    const out = f.formatDate(1, month, 15)
-    assert.strictEqual(out, `MON, ${monthLiterals[month - 1]} 15`, `month ${month} mapping wrong`)
-  }
+test('formatDate degrades rather than printing undefined for a bad weekday', () => {
+  assert.strictEqual(formatDate(0, 12), NO_VALUE)
+  assert.strictEqual(formatDate(8, 12), NO_VALUE)
 })
 
 test('formatSteps groups thousands', () => {
-  assert.strictEqual(f.formatSteps(8560), '8,560')
-  assert.strictEqual(f.formatSteps(999), '999')
-  assert.strictEqual(f.formatSteps(0), '0')
-  assert.strictEqual(f.formatSteps(1234567), '1,234,567')
+  assert.strictEqual(formatSteps(8421), '8,421')
+  assert.strictEqual(formatSteps(999), '999')
+  assert.strictEqual(formatSteps(10582), '10,582')
 })
 
-test('formatSteps renders a dash when the sensor has not reported, but keeps a real zero', () => {
-  assert.strictEqual(f.formatSteps(0), '0')
-  assert.strictEqual(f.formatSteps(null), '--')
-  assert.strictEqual(f.formatSteps(undefined), '--')
+test('formatSteps keeps a real zero but dashes a missing reading', () => {
+  assert.strictEqual(formatSteps(0), '0')
+  assert.strictEqual(formatSteps(null), NO_VALUE)
+  assert.strictEqual(formatSteps(undefined), NO_VALUE)
 })
 
-test('formatBattery clamps and suffixes', () => {
-  assert.strictEqual(f.formatBattery(80), '80%')
-  assert.strictEqual(f.formatBattery(-5), '0%')
-  assert.strictEqual(f.formatBattery(140), '100%')
+test('formatBattery clamps to 0-100', () => {
+  assert.strictEqual(formatBattery(78), '78%')
+  assert.strictEqual(formatBattery(140), '100%')
+  assert.strictEqual(formatBattery(-5), '0%')
 })
 
-test('formatBattery renders a dash when the sensor has not reported, but keeps a real zero', () => {
-  assert.strictEqual(f.formatBattery(0), '0%')
-  assert.strictEqual(f.formatBattery(null), '--%')
-  assert.strictEqual(f.formatBattery(undefined), '--%')
+test('formatBattery dashes a missing reading', () => {
+  assert.strictEqual(formatBattery(null), '--%')
 })
 
-test('formatTemp appends a degree sign', () => {
-  assert.strictEqual(f.formatTemp(28), '28°')
-  assert.strictEqual(f.formatTemp(-3), '-3°')
+test('formatMetric rounds to whole numbers', () => {
+  assert.strictEqual(formatMetric(519.6), '520')
+  assert.strictEqual(formatMetric(32), '32')
 })
 
-test('formatHiLo renders both bounds', () => {
-  assert.strictEqual(f.formatHiLo(32, 24), 'H:32° L:24°')
+test('formatMetric keeps a real zero but dashes a missing reading', () => {
+  assert.strictEqual(formatMetric(0), '0')
+  assert.strictEqual(formatMetric(null), NO_VALUE)
 })
 
-test('formatHiLo degrades missing bounds to -- instead of undefined', () => {
-  assert.strictEqual(f.formatHiLo(32, 24), 'H:32° L:24°')
-  assert.strictEqual(f.formatHiLo(undefined, 24), 'H:-- L:24°')
-  assert.strictEqual(f.formatHiLo(32, undefined), 'H:32° L:--')
-  assert.strictEqual(f.formatHiLo(null, null), 'H:-- L:--')
-  assert.strictEqual(f.formatHiLo(undefined, undefined), 'H:-- L:--')
-})
-
-test('formatHeart renders a dash when unavailable', () => {
-  assert.strictEqual(f.formatHeart(72), '72')
-  assert.strictEqual(f.formatHeart(0), '--')
-  assert.strictEqual(f.formatHeart(null), '--')
-  assert.strictEqual(f.formatHeart(undefined), '--')
-})
-
-test('formatCalories rounds to whole numbers', () => {
-  assert.strictEqual(f.formatCalories(320.4), '320')
-  assert.strictEqual(f.formatCalories(0), '0')
-})
-
-test('formatCalories renders a dash when the sensor has not reported, but keeps a real zero', () => {
-  assert.strictEqual(f.formatCalories(0), '0')
-  assert.strictEqual(f.formatCalories(null), '--')
-  assert.strictEqual(f.formatCalories(undefined), '--')
-})
-
-test('formatDistance keeps one decimal', () => {
-  assert.strictEqual(f.formatDistance(2.5), '2.5 km')
-  assert.strictEqual(f.formatDistance(10), '10.0 km')
-})
-
-test('unavailable numeric values degrade rather than print NaN', () => {
-  assert.strictEqual(f.formatSteps(null), '--')
-  assert.strictEqual(f.formatCalories(null), '--')
-  assert.strictEqual(f.formatTemp(null), '--°')
+test('no formatter ever emits NaN or undefined for a junk reading', () => {
+  const junk = [null, undefined, NaN, 'abc', {}]
+  for (const v of junk) {
+    for (const [name, fn] of Object.entries({ formatSteps, formatBattery, formatMetric })) {
+      const out = fn(v)
+      assert.ok(typeof out === 'string', `${name} must return a string`)
+      assert.ok(!/NaN|undefined/.test(out), `${name}(${String(v)}) produced "${out}"`)
+    }
+  }
 })

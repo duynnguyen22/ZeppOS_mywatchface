@@ -1,10 +1,10 @@
 // Display string formatting. Pure - no Zepp API - so it is unit testable.
 
 const WEEKDAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
-const MONTHS = [
-  'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-  'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
-]
+
+// Shown when a sensor has no reading. Never substitute a plausible-looking
+// number: a dash is honest, a guess is not.
+const NO_VALUE = '--'
 
 function pad2(n) {
   return String(n).padStart(2, '0')
@@ -19,52 +19,33 @@ function formatMinute(minute) {
   return pad2(minute)
 }
 
-function meridiem(hour) {
-  return hour < 12 ? 'AM' : 'PM'
+// "SAT · 12" - weekday and day of month, nothing else. `week` is 1-7
+// starting Monday, matching the platform's Time.getDay().
+function formatDate(week, day) {
+  const name = WEEKDAYS[week - 1]
+  if (!name) return NO_VALUE
+  return `${name} · ${day}`
 }
 
-// `week` is 1-7 starting Monday, matching hmSensor TIME.
-function formatDate(week, month, day) {
-  return `${WEEKDAYS[week - 1]}, ${MONTHS[month - 1]} ${day}`
-}
-
+// Thousands-separated, because "8,421" is the reference and a bare 8421
+// reads slower at a glance.
 function formatSteps(steps) {
-  if (steps === null || steps === undefined) return '--'
-  const value = Number(steps) || 0
-  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  if (!Number.isFinite(steps)) return NO_VALUE
+  return String(Math.max(0, Math.round(steps))).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
 function formatBattery(percent) {
-  if (percent === null || percent === undefined) return '--%'
-  return `${Math.max(0, Math.min(100, Number(percent) || 0))}%`
+  if (!Number.isFinite(percent)) return `${NO_VALUE}%`
+  return `${Math.max(0, Math.min(100, Math.round(percent)))}%`
 }
 
-function formatTemp(celsius) {
-  if (celsius === null || celsius === undefined) return '--°'
-  return `${celsius}°`
-}
-
-function formatHiLo(high, low) {
-  const hi = high === null || high === undefined ? '--' : `${high}°`
-  const lo = low === null || low === undefined ? '--' : `${low}°`
-  return `H:${hi} L:${lo}`
-}
-
-function formatHeart(bpm) {
-  return bpm ? String(bpm) : '--'
-}
-
-function formatCalories(kcal) {
-  if (kcal === null || kcal === undefined) return '--'
-  return String(Math.round(Number(kcal) || 0))
-}
-
-function formatDistance(km) {
-  return `${(Number(km) || 0).toFixed(1)} km`
+// Any plain whole-number readout: calories, heart rate in bpm.
+function formatMetric(value) {
+  if (!Number.isFinite(value)) return NO_VALUE
+  return String(Math.max(0, Math.round(value)))
 }
 
 module.exports = {
-  pad2, formatHour, formatMinute, meridiem, formatDate,
-  formatSteps, formatBattery, formatTemp, formatHiLo,
-  formatHeart, formatCalories, formatDistance,
+  WEEKDAYS, NO_VALUE, pad2, formatHour, formatMinute, formatDate,
+  formatSteps, formatBattery, formatMetric,
 }

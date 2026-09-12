@@ -1,6 +1,9 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { SCREEN, CENTER, RADIUS, polar, fitsOnFace, RECT, statCard, CARD, CARD_INSET } = require('../app/watchface/layout.js')
+const {
+  SCREEN, CENTER, RADIUS, polar, fitsOnFace, RECT, GAUGE, ARC_FRAMES, SAFE_MARGIN,
+  arcBox, TIME_CENTRE,
+} = require('../app/watchface/layout.js')
 
 function close(actual, expected, tol = 0.001) {
   assert.ok(Math.abs(actual - expected) <= tol, `${actual} != ${expected}`)
@@ -55,10 +58,19 @@ test('margin shrinks the usable area', () => {
   assert.strictEqual(fitsOnFace(wide, 50), false)
 })
 
-test('every laid-out element stays inside the bezel', () => {
+test('every laid-out element respects the safe area, not just the bezel', () => {
+  // The guideline asks for a 20-25px margin inside the circular boundary,
+  // which is stricter than merely "not clipped". Checking the loose
+  // condition would let content creep into the curve where it looks wrong
+  // long before it is actually cut off.
+  assert.ok(SAFE_MARGIN >= 20 && SAFE_MARGIN <= 25, 'safe margin must be 20-25px')
   for (const [name, rect] of Object.entries(RECT)) {
     if (name === 'BACKGROUND') continue
-    assert.strictEqual(fitsOnFace(rect, 4), true, `${name} is clipped by the bezel`)
+    assert.strictEqual(
+      fitsOnFace(rect, SAFE_MARGIN),
+      true,
+      `${name} breaks the ${SAFE_MARGIN}px safe area`
+    )
   }
 })
 
@@ -66,43 +78,144 @@ test('the background covers the whole screen', () => {
   assert.deepStrictEqual(RECT.BACKGROUND, { x: 0, y: 0, w: 466, h: 466 })
 })
 
-test('three stat cards are evenly spaced and do not overlap', () => {
-  const cards = [statCard(0), statCard(1), statCard(2)]
-  for (const card of cards) {
-    assert.strictEqual(card.w, 118)
-    assert.strictEqual(card.h, 88)
-    assert.strictEqual(card.y, 234)
+test('every gauge has a sane track: positive band, positive sweep', () => {
+  for (const [name, g] of Object.entries(GAUGE)) {
+    assert.ok(g.rOuter > g.rInner, `${name} band must have thickness`)
+    assert.ok(g.span > 0 && g.span <= 360, `${name} span out of range`)
+    assert.ok(g.start >= 0 && g.start < 360, `${name} start out of range`)
+    assert.ok(g.dir === 1 || g.dir === -1, `${name} dir must be +1 or -1`)
   }
-  const gap1 = cards[1].x - (cards[0].x + cards[0].w)
-  const gap2 = cards[2].x - (cards[1].x + cards[1].w)
-  assert.strictEqual(gap1, gap2)
-  assert.ok(gap1 > 0, 'cards must not overlap')
 })
 
-test('the stat card row is horizontally centred', () => {
-  const first = statCard(0)
-  const last = statCard(2)
-  const leftGap = first.x
-  const rightGap = 466 - (last.x + last.w)
-  assert.strictEqual(leftGap, rightGap)
+test('no point an arc actually sweeps falls outside the bezel', () => {
+  // Deliberately NOT the bounding square of the gauge's circle: an arc
+  // only occupies its own sweep, and the battery arc's circle extends well
+  // past the bezel in directions the arc never reaches. Sample the swept
+  // outer edge instead.
+  for (const [name, g] of Object.entries(GAUGE)) {
+    for (let t = 0; t <= 1; t += 0.02) {
+      const deg = g.start + g.dir * g.span * t
+      const rad = ((deg - 90) * Math.PI) / 180
+      const x = g.cx + g.rOuter * Math.cos(rad)
+      const y = g.cy + g.rOuter * Math.sin(rad)
+      const fromCentre = Math.hypot(x - CENTER.x, y - CENTER.y)
+      assert.ok(
+        fromCentre <= RADIUS - 2,
+        `${name} reaches ${fromCentre.toFixed(1)}px from centre at ${deg.toFixed(0)}deg`
+      )
+    }
+  }
 })
 
-test('statCard rejects an out-of-range index', () => {
-  assert.throws(() => statCard(3))
-  assert.throws(() => statCard(-1))
+test('the battery arc is deliberately not concentric with the face', () => {
+  // Measured off the reference: its centre sits well above the screen
+  // centre, which is what makes it read flatter than a bezel arc. If this
+  // ever equals CENTER.y again, someone has "corrected" it by mistake.
+  assert.notStrictEqual(GAUGE.BATTERY.cy, CENTER.y)
+  assert.ok(GAUGE.BATTERY.cy < CENTER.y)
 })
 
-test('the card icon and value have clear separation, not just a few px', () => {
-  const iconRight = CARD_INSET.ICON.dx + CARD_INSET.ICON.w
-  const gap = CARD_INSET.VALUE.dx - iconRight
-  assert.ok(gap >= 6, `icon-to-value gap is only ${gap}px`)
+test('the two ring gauges mirror each other about the face centre', () => {
+  assert.strictEqual(CENTER.x - GAUGE.STEPS.cx, GAUGE.KCAL.cx - CENTER.x)
+  assert.strictEqual(GAUGE.STEPS.cy, GAUGE.KCAL.cy)
+  assert.strictEqual(GAUGE.STEPS.dir, -GAUGE.KCAL.dir)
 })
 
-test('every CARD_INSET rect sits within the card bounds', () => {
-  for (const [name, inset] of Object.entries(CARD_INSET)) {
-    const right = inset.dx + inset.w
-    const bottom = inset.dy + inset.h
-    assert.ok(right <= CARD.w, `${name} right edge (${right}) exceeds card width (${CARD.w})`)
-    assert.ok(bottom <= CARD.h, `${name} bottom edge (${bottom}) exceeds card height (${CARD.h})`)
+test('the dashed dial declares how many dashes it has', () => {
+  assert.ok(Number.isInteger(GAUGE.HR.dashes) && GAUGE.HR.dashes > 0)
+})
+
+test('there are enough arc frames for a visually smooth fill', () => {
+  assert.ok(Number.isInteger(ARC_FRAMES) && ARC_FRAMES >= 11)
+})
+
+test('the time run is centred near the middle of the face', () => {
+  assert.ok(Math.abs(TIME_CENTRE.x - CENTER.x) < 20)
+})
+
+test('the three gauge value readouts do not overlap each other', () => {
+  const boxes = [RECT.STEPS_VALUE, RECT.HR_VALUE, RECT.KCAL_VALUE]
+    .slice()
+    .sort((a, b) => a.x - b.x)
+  for (let i = 1; i < boxes.length; i++) {
+    assert.ok(
+      boxes[i].x >= boxes[i - 1].x + boxes[i - 1].w,
+      `gauge readouts overlap at index ${i}`
+    )
+  }
+})
+
+// --- arcBox -----------------------------------------------------------
+// Arc fills ship as sprite frames. The generator crops each frame to the
+// arc's own bounds and the face places it at the same origin, so BOTH
+// sides must derive that box from one function - if they disagree by a
+// pixel the fill sits off its track.
+
+test('arcBox is tight: much smaller than the gauge circle for a short sweep', () => {
+  const box = arcBox(GAUGE.BATTERY)
+  const full = GAUGE.BATTERY.rOuter * 2
+  assert.ok(box.h < full / 2, `a 76deg sweep should not need a ${full}px tall box`)
+})
+
+test('arcBox contains every point the arc sweeps, at both radii', () => {
+  for (const [name, g] of Object.entries(GAUGE)) {
+    const box = arcBox(g)
+    for (let t = 0; t <= 1; t += 0.01) {
+      const deg = g.start + g.dir * g.span * t
+      const rad = ((deg - 90) * Math.PI) / 180
+      for (const r of [g.rInner, g.rOuter]) {
+        const x = g.cx + r * Math.cos(rad)
+        const y = g.cy + r * Math.sin(rad)
+        assert.ok(
+          x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h,
+          `${name}: point at ${deg.toFixed(0)}deg r${r} falls outside arcBox`
+        )
+      }
+    }
+  }
+})
+
+test('arcBox leaves room for the round caps, not just the centreline', () => {
+  const g = GAUGE.STEPS
+  const box = arcBox(g)
+  const capR = (g.rOuter - g.rInner) / 2
+  const rad = ((g.start - 90) * Math.PI) / 180
+  const mid = (g.rInner + g.rOuter) / 2
+  // The far edge of the cap at the sweep's start.
+  const capEdgeY = g.cy + mid * Math.sin(rad) - capR
+  assert.ok(capEdgeY >= box.y, 'the start cap pokes out of the top of arcBox')
+})
+
+test('arcBox returns whole pixels, since it becomes an image origin', () => {
+  for (const [name, g] of Object.entries(GAUGE)) {
+    const box = arcBox(g)
+    for (const k of ['x', 'y', 'w', 'h']) {
+      assert.ok(Number.isInteger(box[k]), `${name} arcBox.${k} must be an integer`)
+    }
+  }
+})
+
+test('no metric value box overlaps the label beneath it', () => {
+  const pairs = [
+    ['steps', RECT.STEPS_VALUE, RECT.STEPS_LABEL],
+    ['hr', RECT.HR_VALUE, RECT.HR_LABEL],
+    ['kcal', RECT.KCAL_VALUE, RECT.KCAL_LABEL],
+  ]
+  for (const [name, value, label] of pairs) {
+    assert.ok(
+      label.y >= value.y + value.h,
+      `${name}: value bottom ${value.y + value.h} overlaps label top ${label.y}`
+    )
+  }
+})
+
+test('no metric icon overlaps the value beneath it', () => {
+  const pairs = [
+    ['steps', RECT.STEPS_ICON, RECT.STEPS_VALUE],
+    ['hr', RECT.HR_ICON, RECT.HR_VALUE],
+    ['kcal', RECT.KCAL_ICON, RECT.KCAL_VALUE],
+  ]
+  for (const [name, icon, value] of pairs) {
+    assert.ok(value.y >= icon.y + icon.h, `${name}: icon overlaps its value`)
   }
 })
